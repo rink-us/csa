@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(nmap --version)",
+      "Bash(dig -v)",
+      "Bash(whois --version)",
+      "Bash(traceroute --version)",
+      "Bash(openssl version *)",
+      "Bash(curl --version)",
+      "Bash(nmap -sn -PE -n --max-retries 1 -oX - scanme.nmap.org)",
+      "Bash(nmap -sT -F --version-light -oX - scanme.nmap.org)",
+      "Bash(route -n get default)",
+      "Bash(awk '/gateway/ {print $2}')"
+    ]
+  }
+}
