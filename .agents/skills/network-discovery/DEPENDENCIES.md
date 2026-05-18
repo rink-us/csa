@@ -12,27 +12,28 @@ The network-discovery skills shell out to standard CLI tools. The agent SHOULD d
 | `traceroute` *(or `mtr`)* | inetutils 2.0 / mtr 0.95 | network-reconnaissance, network-mapper | raw-socket modes need root; ICMP default does not |
 | `openssl` | 1.1.1 | tls-analyzer | no |
 | `curl` | 7.79 | service-enumerator | no |
+| `snmpget` (from `net-snmp`) | 5.7 | service-enumerator | no |
 
 ## One-line install cheatsheet
 
 **macOS (Homebrew)**
 
 ```sh
-brew install nmap bind whois mtr openssl@3 curl
+brew install nmap bind whois mtr openssl@3 curl net-snmp
 ```
 
-(`bind` ships `dig`; `mtr` covers traceroute; `openssl@3` is the modern build — Apple's bundled openssl is LibreSSL and lacks some flags this skill uses.)
+(`bind` ships `dig`; `mtr` covers traceroute; `openssl@3` is the modern build — Apple's bundled openssl is LibreSSL and lacks some flags this skill uses; `net-snmp` ships `snmpget`.)
 
 **Debian / Ubuntu**
 
 ```sh
-sudo apt install -y nmap dnsutils whois traceroute openssl curl
+sudo apt install -y nmap dnsutils whois traceroute openssl curl snmp
 ```
 
 **Fedora / RHEL**
 
 ```sh
-sudo dnf install -y nmap bind-utils whois traceroute openssl curl
+sudo dnf install -y nmap bind-utils whois traceroute openssl curl net-snmp-utils
 ```
 
 ## Privileged invocations

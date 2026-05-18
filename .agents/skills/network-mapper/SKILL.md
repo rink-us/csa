@@ -21,7 +21,7 @@ This is the composer skill: when fed the outputs of `service-enumerator` and `tl
 | `scope` | string\|array | — | CIDR (`10.0.0.0/24`), range (`10.0.0.1-10.0.0.50`), single IP, or array of any of these |
 | `discovery_method` | enum | `"ping"` | `"ping"` (ICMP/`-PE`, unprivileged) or `"arp"` (`-PR`, privileged, same-subnet only) |
 | `device_classification` | bool | `true` | Run light port-fingerprint probe on each up host |
-| `classify_first` | bool | `true` | Run device-class identification (PTR + MAC vendor + hostname pattern) BEFORE port-fingerprinting. Lets the caller skip port-scanning known phone-home device classes entirely. |
+| `classify_first` | bool | `true` | When `true`, run device-class identification (PTR + MAC vendor + hostname pattern) BEFORE port-fingerprinting; emit `device_class` on each host so the caller can filter via `skip_classes`. When `false`, skip the classification step entirely and proceed straight to the legacy `device_type` fingerprint flow (`skip_classes` is then ignored). |
 | `skip_classes` | array | `["phone","vendor_cloud_iot"]` | Device classes whose port-scan phase should be skipped because they don't expose local services. Set to `[]` to scan everything. |
 | `correlate_with` | object | `null` | Prior outputs from other skills — see "Correlation" |
 | `allow_wide_scope` | bool | `false` | Required to scan wider than /16 |
@@ -137,6 +137,7 @@ Merge rules — for each `TopologyNode` matched by IP:
 - `tls-analyzer` → append the leaf cert to `node.certificates = []`
 - `network-reconnaissance.dns_reverse` → fill in `node.host.hostname` if missing
 - `network-reconnaissance.traceroute` → upgrade hop IPs to `role: "router"` if they appear as intermediate hops
+- `network-mapper` (prior run) → **preserve `device_class`** from the prior run unless the current run has a NEW signal that would change it. Re-classification SHALL only occur when a host has new signals (new PTR, new MAC, new open port pattern) that produce a different class than the prior one. This keeps classifications stable across periodic re-scans of the same network.
 
 When merging, prefer the correlated data over `network-mapper`'s own classification probe (skip Step 2 for nodes already covered by a correlated `port-scanner` result).
 

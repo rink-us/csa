@@ -99,7 +99,7 @@ If the trigger table produces zero recommendations, emit a single `informational
 | --- | --- |
 | `steps` is empty / missing | Refuse with a validation error — there is nothing to merge |
 | `target` is missing | Refuse — required for filename and summary |
-| `output_dir` is not writable | Report the directory and the underlying error code |
+| `output_dir` is not writable | Emit the merged JSON report into the agent conversation as a fallback, AND report the directory + underlying error code in the result envelope's `errors[]` array. Do not silently lose the report content. |
 | JSON validation fails after write | Report and do NOT delete the bad file (the operator may want to inspect) |
 
 ## Example invocation

@@ -20,6 +20,8 @@ Plus three companion skills:
 
 Required external CLIs and install commands are listed in [.agents/skills/network-discovery/DEPENDENCIES.md](.agents/skills/network-discovery/DEPENDENCIES.md). Generated reports land in [reports/](reports/).
 
+Formal capability specs (what each skill MUST do, with testable Scenarios) live under [openspec/specs/](openspec/specs/). The specs formalize the embedded-device handling rules — including the anti-pattern guard against aggressive nmap fingerprinting against printers/IoT/CPE, the named device-class taxonomy, and the `vuln-correlator` fallback path for hosts without product+version data.
+
 ## Usage
 
 Three ways to invoke the skills, ordered from terse to explicit.
