@@ -22,6 +22,27 @@ The network-discovery skills shell out to standard CLI tools. The agent SHOULD d
 | --- | --- | --- |
 | `gpg` | cve-snapshot-manager (signing), vuln-correlator (signature verification) | Only consumed when the operator opts into snapshot signing (`sign-with=<key>` on `/netd:cve-snapshot`) or signature verification (`verify_signature=true` on `vuln-correlator`). Required for team-shared snapshots; not needed for single-operator use. Install via `brew install gnupg` (macOS), `apt install gnupg` (Debian/Ubuntu), or `dnf install gnupg2` (Fedora/RHEL). |
 
+## Pentest tooling
+
+The `/pentest:engagement` workflow requires additional dependencies beyond the network-discovery defaults. These are NOT installed automatically when you install the rest of the bundle — they're needed only when running pentest engagements.
+
+| Tool | Required? | Used by | Notes |
+| --- | --- | --- | --- |
+| `msfconsole` (Metasploit Framework) | required for pentest | exploit-correlator | The standard exploitation framework. Install via `brew install metasploit` (macOS), `apt install metasploit-framework` (Debian/Ubuntu), or use the upstream installer on Fedora/RHEL. **Canonical environment: Kali Linux**, which ships Metasploit pre-installed. |
+| `impacket` (Python toolkit) | required for pentest | exploit-correlator (Windows-targeting modules) | A collection of Python classes for working with network protocols. Install via `brew install impacket` (macOS) or `apt install python3-impacket` (Debian/Ubuntu). Pre-installed on Kali Linux. |
+| `searchsploit` (from `exploitdb` package) | optional for pentest | exploit-correlator (ExploitDB lookup) | CLI front-end to the ExploitDB index. Install via `apt install exploitdb` (Debian/Ubuntu). On macOS, install via `brew install exploitdb`. Pre-installed on Kali Linux. Without `searchsploit`, the ExploitDB candidate-lookup step is skipped. |
+| SecLists (common credentials/wordlists) | optional for pentest | exploit-correlator (when exploits need credential lists) | Available at `https://github.com/danielmiessler/SecLists`. Clone to a fixed location and reference. Pre-installed at `/usr/share/seclists/` on Kali Linux. |
+
+### Recommended pentest environment
+
+**Use a dedicated engagement machine or VM** rather than your everyday laptop. Reasons:
+- Metasploit + Impacket presence on a general-purpose machine is itself a meaningful signal (an incident responder finding either on an unexpected machine investigates further)
+- Pentest tooling often requires non-standard kernel modules, raw socket access, etc. — kept off your daily-driver kernel
+- Engagement evidence (captured credentials, exfiltrated data samples) is high-sensitivity material that should be isolated from personal/work data
+- Tooling failures (Metasploit crashes, Python conflicts) shouldn't take down your laptop
+
+The canonical pentest environment is **Kali Linux** (free, maintained, ships every tool the playbook references). For occasional engagements, a Kali VM is sufficient; for full-time pentest work, a dedicated physical machine is common.
+
 ## One-line install cheatsheet
 
 **macOS (Homebrew)**

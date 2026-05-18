@@ -48,6 +48,26 @@ Six commands live in [.agents/commands/netd/](.agents/commands/netd/). They're e
 
 Arguments after the command name are positional. Unknown flags are surfaced as a clarification request rather than silently ignored. Each command refuses to run if the required target argument is missing.
 
+### Pentest commands
+
+The `/pentest:*` namespace is separate from `/netd:*` because pentest activity is operationally and legally distinct from reconnaissance. Files live in [.agents/commands/pentest/](.agents/commands/pentest/).
+
+| Command | Purpose | Example |
+| --- | --- | --- |
+| `/pentest:engagement <scope> client=<name> roe-text-from-file=<path>` | Authorized pentest end-to-end: ROE confirmation, scope validation, exploit orchestration with per-attempt literal-`execute` confirmation, evidence capture, attack-narrative report | `/pentest:engagement 10.0.0.0/24 client="Acme Corp" roe-text-from-file=./roe-acme.txt` |
+
+**Safety summary** (every guard below is a hard spec requirement, not a guideline — see [openspec/specs/pentest-engagement/spec.md](openspec/specs/pentest-engagement/spec.md) and [openspec/specs/exploit-correlator/spec.md](openspec/specs/exploit-correlator/spec.md)):
+
+- The engagement REFUSES to start without verbatim ROE text (≥100 chars) — a SOW reference number alone is insufficient
+- The engagement REFUSES to start without a SOC notification timestamp (or an explicit `"skipped: <reason>"` for stealth pentests)
+- Every exploit target is RE-validated against the parsed ROE in-scope list at attempt time (no caching)
+- Every exploit attempt requires the literal operator response `execute` — `yes`, `y`, `Execute`, etc. are all treated as decline; there is no auto-confirm flag
+- Defaults to dry-run for every attempt; execution requires explicit per-attempt confirmation
+- Evidence records are append-only — corrections happen via new records with `correction_of` reference, never by editing
+- Operator-supplied exploits (not from public databases) require a `disclosure_reference` field; there is no operator override
+
+Read [playbooks/pentest.md](playbooks/pentest.md) before your first pentest engagement.
+
 ### 2. Explicit-by-name fallback (always works)
 
 If you forget a slash command's flag syntax — or you're in a non-Claude-Code context that doesn't load slash commands — just name the skill in plain English:
@@ -122,6 +142,8 @@ Reports may contain sensitive findings — `reports/` is not gitignored by defau
 
 Similarly, if you use the offline CVE lookup feature (`/netd:cve-snapshot` and `cve_source=offline`), the snapshot lives under `./cve-snapshots/` (typically ~2 GB after a full NVD ingest). Add `cve-snapshots/` to your `.gitignore` — snapshots are operator-managed data, large, and don't belong in version control.
 
+Pentest engagements produce evidence files (screenshots, command output captures) under `reports/pentest-evidence/<engagement_id>/`. These are append-only per-attempt records and typically contain client-sensitive data — captured credentials, exfiltrated data samples, screenshots of admin UIs. **Add `reports/pentest-evidence/` to your `.gitignore`.** Custody and retention of these files is per the ROE; default is destruction at engagement end.
+
 ### Engagements & playbooks
 
 A **playbook** is a documented, repeatable procedure. An **engagement** is one execution of a playbook for a specific client.
@@ -131,6 +153,9 @@ Playbooks live in [playbooks/](playbooks/) as narrative markdown — readable to
 | Playbook | Top-level slash command | Description |
 |---|---|---|
 | [playbooks/network-assessment.md](playbooks/network-assessment.md) | `/netd:engagement <scope> client=<name>` | Discover all hosts on a client network, scan for vulnerabilities, produce a technical report and a client letter, with engagement metadata captured to a sidecar JSON. |
+| [playbooks/pentest.md](playbooks/pentest.md) | `/pentest:engagement <scope> client=<name> roe-text-from-file=<path>` | Authorized penetration test with exploit attempt orchestration. Verbatim ROE text required; per-attempt operator confirmation; append-only evidence directory; attack-narrative report. **Distinct from network-assessment** — pentest actually exploits findings. Higher operational and legal stakes. |
+
+The two engagement types are deliberately distinct. **Use `/netd:engagement` for reconnaissance and posture review** — identify what's vulnerable without exploiting it. **Use `/pentest:engagement` only when the contract calls for actual exploit attempts** — the higher-friction safety design (verbatim ROE text capture, per-attempt literal-`execute` confirmation, hard target-in-scope validation, append-only evidence records) exists because pentest engagements have meaningful legal and operational risk that the recon-only flow does not.
 
 Each engagement writes three files to [reports/](reports/):
 
