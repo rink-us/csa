@@ -237,6 +237,120 @@ Each of the five `*_at` phase fields holds either:
 
 Sidecars produced before this schema version may lack the five `*_at` phase timestamp fields, the `artifacts` block, or the explicit `operator_notes` field. Such sidecars are valid pre-v1.0 records but produce a non-fatal warning when read by spec-aware tooling. v1.0+ sidecars MUST include all required fields.
 
+### Pentest extensions (when `playbook="pentest"`)
+
+When the engagement is a pentest (not a network-assessment), the sidecar includes these additional required fields beyond the base EngagementRecord:
+
+```json
+{
+  "playbook": "pentest",
+  "roe": {
+    "text": "<verbatim scope-of-work excerpt, ≥100 chars>",
+    "reference": "SOW-2026-04-Acme",
+    "parsed_scope": {
+      "in_scope_ranges": ["10.0.0.0/24", "192.168.50.0/24"],
+      "out_of_scope": ["10.0.0.1"],
+      "prohibited_techniques": ["DoS", "social_engineering", "password_spraying"],
+      "engagement_window": { "start": "2026-05-18T13:00:00Z", "end": "2026-05-20T17:00:00Z" }
+    },
+    "parsed_overrides": null
+  },
+  "sessions": [
+    {
+      "session_id": "s1",
+      "started_at": "2026-05-18T13:00:00Z",
+      "finished_at": "2026-05-18T19:30:00Z",
+      "soc_notified_at": "2026-05-18T12:55:00Z",
+      "evidence_record_ids": ["rec-...", "rec-..."]
+    }
+  ],
+  "soc_notified_at": "2026-05-18T12:55:00Z",
+  "evidence_directory": "reports/pentest-evidence/<engagement_id>/",
+  "narrative_path": "reports/<engagement_id>-narrative.md",
+  "exploit_attempts_count": 12,
+  "successful_exploits_count": 3,
+  "mitre_attack_techniques_used": ["T1190", "T1059", "T1078"],
+  "scope_creep_acknowledgments": [
+    { "attempt_record_id": "rec-...", "operator_reason": "pivot discovery; not exploited" }
+  ]
+}
+```
+
+**Session shape.** Multi-day pentests use `sessions[]` to record each contiguous work block separately. Single-session engagements still emit a one-element `sessions[]` array for schema consistency. Each session has its own SOC notification timestamp (re-notify per session — SOC shifts change). Top-level `soc_notified_at` mirrors the first session's value for quick access.
+
+**Field rules.**
+- `roe.text` is required and must be ≥100 chars of meaningful content (per `pentest-engagement` spec Requirement 1)
+- `roe.parsed_overrides` is non-null when the operator manually corrected the auto-parse
+- `sessions[].soc_notified_at` follows the same `"skipped: <reason>"` convention as other phase timestamps
+- `scope_creep_acknowledgments[]` must have one entry per evidence record with `outcome="refused_out_of_scope"`
+
+## `PentestEvidenceRecord`
+
+Produced by the `exploit-correlator` capability — one file per exploit attempt (including declined and refused-out-of-scope attempts). Append-only: once written, NEVER edited. Corrections happen via a new record with `correction_of` reference.
+
+```json
+{
+  "record_id": "rec-2026-05-18-a3f1",
+  "engagement_id": "acme-corp-2026-05-18",
+  "session_id": "s1",
+  "attempted_at": "2026-05-18T14:23:47Z",
+  "target": {
+    "ip": "10.0.0.5",
+    "hostname": "intranet.acme.local",
+    "port": 80,
+    "service": "http"
+  },
+  "technique": "Authentication Bypass via SQL Injection",
+  "mitre_attack_id": "T1190",
+  "exploit_source": "exploitdb",
+  "exploit_reference": "EDB-12345",
+  "disclosure_reference": null,
+  "command_run": "searchsploit -p 12345 | bash",
+  "outcome": "success",
+  "stdout": "<truncated to 64 KiB; if truncated: '... [truncated, original was N bytes]'>",
+  "stderr": "",
+  "exit_code": 0,
+  "screenshot_path": "reports/pentest-evidence/acme-corp-2026-05-18/rec-2026-05-18-a3f1.png",
+  "operator_notes": "Got admin session cookie; logged in as user 'svc-backup'.",
+  "correction_of": null,
+  "correction_reason": null,
+  "refusal_acknowledgment_reason": null
+}
+```
+
+### Field rules
+
+| Field | Required? | Notes |
+| --- | --- | --- |
+| `record_id` | required | Unique within the engagement. Convention: `rec-<YYYY-MM-DD>-<short-hex>`. |
+| `engagement_id` | required | Matches the parent engagement's `engagement_id`. |
+| `session_id` | required | References `sessions[].session_id` in the parent sidecar. |
+| `attempted_at` | required | ISO 8601 UTC when the attempt started. |
+| `target.ip` | required | The actual target IP. Used by the in-scope re-validator. |
+| `target.hostname` / `target.port` / `target.service` | optional | Populated when known. |
+| `technique` | required | Short human-readable description of the exploit class. |
+| `mitre_attack_id` | required | At minimum the broad technique ID (e.g. `T1190`); sub-technique IDs (e.g. `T1078.001`) preferred when available. `unknown` is acceptable for exploits without a clear ATT&CK mapping. |
+| `exploit_source` | required | One of `exploitdb`, `metasploit`, `nvd_reference`, `operator_supplied`. |
+| `exploit_reference` | required for db sources | The ExploitDB ID, Metasploit module path, or NVD reference URL. |
+| `disclosure_reference` | required when `exploit_source="operator_supplied"` | URL to CVE coordination record, vendor advisory, or evidence of vendor notification. |
+| `command_run` | required for executed attempts | Verbatim command line. Empty string for `dry_run_only`/`declined`/`refused_out_of_scope`. |
+| `outcome` | required | One of `success`, `partial`, `failure`, `declined`, `refused_out_of_scope`, `dry_run_only`. |
+| `stdout` / `stderr` | optional | Truncated to 64 KiB each. When truncated, suffix with `[... truncated, original was N bytes]` so readers know. |
+| `exit_code` | optional | Integer when the exploit produced one. Null when not applicable. |
+| `screenshot_path` | optional | Relative path to a PNG when the exploit yielded UI output. |
+| `operator_notes` | required for executed attempts | Operator's observation of what happened. Free text. |
+| `correction_of` | optional | Set on correction records; references the prior `record_id` being corrected. The original record stays in place — never modified. |
+| `correction_reason` | required when `correction_of` is set | Brief explanation of what was wrong. |
+| `refusal_acknowledgment_reason` | required when `outcome="refused_out_of_scope"` | Operator's reason for the attempt (operator error / pivot discovery / ROE ambiguity). |
+
+### Append-only rule
+
+Evidence records are immutable once written. The file path `reports/pentest-evidence/<engagement_id>/<record_id>.json` is set at write time and the file is not modified afterward. Corrections happen as NEW records that reference the original via `correction_of` and explain the change in `correction_reason`. This preserves the audit trail — an auditor can reconstruct what the operator believed at each point in time.
+
+### Truncation rule
+
+Both `stdout` and `stderr` are capped at 64 KiB. When truncation happens, the field's value ends with `[... truncated, original was N bytes]` (where N is the pre-truncation byte length). Downstream readers can detect truncation by checking for this suffix. The full output may be optionally preserved as a sibling file `<record_id>.stdout.full` / `<record_id>.stderr.full` if the operator opts in (a `preserve_full_output: true` flag on the exploit-correlator invocation).
+
 ## Top-level result envelope
 
 Every skill returns a single JSON object with at least:
