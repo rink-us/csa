@@ -51,6 +51,18 @@ The `/netd:engagement` slash command will prompt for these and write them into a
 
 Run `/netd:precheck` on your laptop. Fix any blockers (missing binaries) before the engagement. Warnings (outdated dig, LibreSSL on macOS) are acceptable but worth noting in the engagement sidecar's `tools_used` field.
 
+### 0.4 Refresh CVE snapshot for air-gapped engagements
+
+If the upcoming engagement is at a site with restrictive network egress (no outbound HTTPS allowed during the assessment window, air-gapped client environment, unreliable cellular hotspot), refresh the local CVE snapshot before traveling:
+
+```
+/netd:cve-snapshot
+```
+
+Initial ingest takes ~30 minutes and uses ~2 GB disk. Weekly re-runs are quick (only the recent + modified delta feeds, < 1 minute). The snapshot lets `vuln-correlator` work entirely offline via `cve_source=offline` — engagements can then be run with no outbound network calls to CIRCL or NVD. See the new "When to use offline CVE mode" section below for the trade-off discussion.
+
+If you're running from a vetted golden image where dependencies are guaranteed (e.g. a pre-configured engagement laptop you maintain), you can ask `/netd:engagement` to skip the precheck phase — but the sidecar will record this explicitly as `"precheck_completed_at": "skipped: <your reason>"` rather than silently bypassing it. The same `"skipped: <reason>"` convention applies to any required phase you legitimately need to bypass; see the "Skipping a phase" subsection under "Sidecar engagement file" below for the full convention.
+
 ---
 
 ## Phase 1 — Pre-scan (on-site or VPN-connected to client network)
@@ -153,52 +165,29 @@ If the client engagement is recurring (quarterly, annual), note the next assessm
 
 ## Sidecar engagement file
 
-`/netd:engagement` writes a JSON file to `reports/engagement-<client-slug>-<date>.json` with this structure:
+`/netd:engagement` writes a JSON file to `reports/engagement-<client-slug>-<date>.json` conforming to the **`EngagementRecord` schema** documented in [.agents/skills/network-discovery/OUTPUT_SCHEMAS.md](../.agents/skills/network-discovery/OUTPUT_SCHEMAS.md#engagementrecord). The required behavior for producing it is in the capability spec at [openspec/specs/network-assessment-engagement/spec.md](../openspec/specs/network-assessment-engagement/spec.md).
 
-```json
-{
-  "engagement_id": "acme-corp-2026-05-17",
-  "client": {
-    "name": "Acme Corp",
-    "primary_contact": "jane@acme.example",
-    "site_address": "(optional)"
-  },
-  "operator": {
-    "name": "Kevin Doe",
-    "email": "k@montanacomputersolutions.com"
-  },
-  "scope": {
-    "ranges": ["192.168.1.0/24"],
-    "exclusions": [],
-    "authorization_reference": "SOW-2026-04-Acme",
-    "authorization_date": "2026-04-15"
-  },
-  "playbook": "network-assessment",
-  "playbook_version": "1.0",
-  "started_at": "2026-05-17T19:42:00Z",
-  "finished_at": "2026-05-17T19:48:00Z",
-  "scans": [
-    {
-      "scope": "192.168.1.0/24",
-      "report_json": "reports/report-192.168.1.0_24-vuln-2026-05-17-1942Z.json",
-      "client_letter": "reports/report-192.168.1.0_24-vuln-2026-05-17-1942Z.txt"
-    }
-  ],
-  "summary": {
-    "hosts_discovered": 13,
-    "hosts_scanned": 4,
-    "total_cves": 12,
-    "highest_severity": "high"
-  },
-  "tools_used": [
-    { "name": "nmap", "version": "7.99", "status": "ok" },
-    { "name": "openssl", "version": "LibreSSL 3.3.6", "status": "degraded_shadowed" }
-  ],
-  "operator_notes": "(free text — fill in any observations from the engagement that aren't captured in the automated output)"
-}
-```
+For the full field list, validation rules, and example payload, follow the OUTPUT_SCHEMAS.md link. A short summary:
 
-The sidecar is the source of truth for "what happened at this engagement." Edit `operator_notes` after the fact to capture context you couldn't include in the client letter.
+- Required identification: `engagement_id`, `client.name`, `operator.name`, `authorization.reference`
+- Required scope: `scope.ranges[]` (non-empty), `scope.exclusions[]` (may be empty)
+- Required phase timestamps (always present, never null): `precheck_completed_at`, `scope_confirmed_at`, `execution_started_at`, `execution_finished_at`, `sidecar_written_at`
+- Required artifacts block: `artifacts.technical_report`, `artifacts.client_letter`, `artifacts.sidecar` — each a relative file path OR a `"skipped: <reason>"` string
+- Free-text post-engagement field: `operator_notes` (starts empty)
+
+The sidecar is the source of truth for "what happened at this engagement."
+
+### Skipping a phase
+
+If you legitimately need to bypass a phase — for example, running from a vetted golden image where the dependency precheck is already known good, or re-running an engagement after fixing a single host where the scope-confirmation was just done — set the phase's `*_at` field to a string starting with `"skipped: "` followed by your reason. Example: `"skipped: golden image - deps verified at boot"`. This preserves the audit trail by making the deliberate bypass visible, rather than leaving a null field that looks like a bug.
+
+Do not abuse this. An engagement with three "skipped" phases is barely an engagement; an auditor reading the sidecar will (rightly) treat it as suspect.
+
+### Editing the sidecar after the engagement
+
+The `operator_notes` field is the ONLY field intended for post-hoc operator edits. Add context the automation couldn't capture: physical security observations from the site visit, conversations with the client during the engagement, follow-up items, why a specific recommendation was prioritized differently than the default.
+
+Do NOT edit other fields by hand. The audit trail depends on the automated fields being trustworthy — if a timestamp or a CVE count or a tool-version was wrong, the right fix is to re-run the engagement (with a `-2` or `-followup` suffix for the engagement ID), not to silently rewrite history. The exception is the rare case where the automation wrote a clear bug (e.g. a malformed JSON value); document that with a note in `operator_notes` explaining what you corrected and why.
 
 ---
 
@@ -212,6 +201,32 @@ The sidecar is the source of truth for "what happened at this engagement." Edit 
 | Penetration testing with exploitation | Out of scope. Different engagement, different authorization. |
 | Authenticated vulnerability scanning | Out of scope for v1. Future playbook. |
 | Web application security review | Out of scope. Different toolset (Burp, ZAP). |
+
+---
+
+## When to use offline CVE mode
+
+`vuln-correlator` supports three CVE sources: `circl` (default), `nvd`, and `offline`. The default works for most engagements — outbound HTTPS to `cve.circl.lu` is usually fine. Switch to `offline` when any of these apply:
+
+- **Air-gapped client environment.** No outbound internet from the assessment laptop. CIRCL and NVD are unreachable by design. Offline mode lets the engagement still produce CVE findings.
+- **Restrictive client egress.** The engagement contract or client policy forbids outbound HTTPS during the assessment window — typically to keep the client's SOC from triaging your traffic as suspicious.
+- **Unreliable field connectivity.** Cellular hotspots and customer guest Wi-Fi often throttle or block NVD's feed endpoints in ways that aren't visible until you're mid-engagement. Offline mode turns "engagement failed at the CVE phase" into "engagement degraded to slightly older data."
+- **Engagement reproducibility matters.** Pin `snapshot_version` to a specific snapshot date and a re-run weeks later produces the same CVE findings. Useful for compliance follow-ups and incident timeline reconstruction.
+
+### The trade-off
+
+Offline data is as fresh as your last `/netd:cve-snapshot` run. If you ran it last week, you'll miss CVEs disclosed in the past 7 days. `vuln-correlator` emits a `snapshot_stale` warning when the snapshot is older than 30 days (configurable), but it doesn't refuse — better stale CVE data than no CVE data.
+
+For high-stakes engagements where missing a recent CVE matters more than network purity, run online (CIRCL/NVD). For everything else, offline is comparable in fidelity and dramatically more reliable.
+
+### How to use it during an engagement
+
+The `/netd:engagement` command will eventually accept `cve-source=offline` as a passthrough; until then, the manual path is:
+
+1. Ensure a fresh snapshot exists: `/netd:cve-snapshot` (skip if you ran it in the last week)
+2. Run the engagement normally with `/netd:engagement <scope> client="..."` — but invoke `vuln-correlator` separately with `cve_source=offline` if you need to override the source mid-chain
+
+The sidecar's `tools_used` block will include the snapshot version that was active, so the engagement record stays auditable.
 
 ---
 

@@ -1,4 +1,4 @@
-# csa (Cyber Security Assessor)
+# Cyber Security Assessor (csa)  
 
 ## Skills
 
@@ -12,9 +12,10 @@ Five Claude Code skills for network reconnaissance and posture review. Each `SKI
 - [tls-analyzer](.agents/skills/tls-analyzer/SKILL.md) — Certificate chain, weaknesses, protocol/cipher inventory, OCSP, CT (openssl)
 - [network-mapper](.agents/skills/network-mapper/SKILL.md) — CIDR sweeps, device classification, topology export (nmap)
 
-Plus three companion skills:
+Plus four companion skills:
 
-- [vuln-correlator](.agents/skills/vuln-correlator/SKILL.md) — per-host CVE lookup + findings narrative. Designed to be invoked one-per-host as parallel sub-agents after a port/service scan.
+- [vuln-correlator](.agents/skills/vuln-correlator/SKILL.md) — per-host CVE lookup + findings narrative. Designed to be invoked one-per-host as parallel sub-agents after a port/service scan. Supports `circl`, `nvd`, and `offline` CVE sources.
+- [cve-snapshot-manager](.agents/skills/cve-snapshot-manager/SKILL.md) — downloads and indexes NVD JSON feeds into a local snapshot for offline `vuln-correlator` lookups. Operator-invoked (typically weekly), enables egress-free engagements.
 - [assessment-report](.agents/skills/assessment-report/SKILL.md) — merges per-skill envelopes into a single technical JSON report with summary + prioritized recommendations; writes to `./reports/`
 - [client-report](.agents/skills/client-report/SKILL.md) — renders a saved JSON report into an email-ready plain-text client letter
 
@@ -43,6 +44,7 @@ Six commands live in [.agents/commands/netd/](.agents/commands/netd/). They're e
 | `/netd:engagement <scope> client=<name>` | Full client engagement: precheck + scope confirmation + vuln-scan + client letter + engagement sidecar JSON (the top-level entry point for a complete deliverable) | `/netd:engagement 192.168.1.0/24 client="Acme Corp"` |
 | `/netd:letter <json-path-or-target>` | Render a saved JSON report into an email-ready client letter | `/netd:letter example.com` |
 | `/netd:precheck` | Verify required CLIs are installed and adequate | `/netd:precheck` |
+| `/netd:cve-snapshot` | Refresh the local NVD CVE snapshot for offline `vuln-correlator` lookups; run weekly or before air-gapped engagements | `/netd:cve-snapshot` |
 
 Arguments after the command name are positional. Unknown flags are surfaced as a clarification request rather than silently ignored. Each command refuses to run if the required target argument is missing.
 
@@ -118,6 +120,8 @@ reports/report-<target>-<YYYY-MM-DD-HHMMZ>.txt    # client letter, plain text
 
 Reports may contain sensitive findings — `reports/` is not gitignored by default but consider doing so for client-bearing assessments.
 
+Similarly, if you use the offline CVE lookup feature (`/netd:cve-snapshot` and `cve_source=offline`), the snapshot lives under `./cve-snapshots/` (typically ~2 GB after a full NVD ingest). Add `cve-snapshots/` to your `.gitignore` — snapshots are operator-managed data, large, and don't belong in version control.
+
 ### Engagements & playbooks
 
 A **playbook** is a documented, repeatable procedure. An **engagement** is one execution of a playbook for a specific client.
@@ -134,7 +138,9 @@ Each engagement writes three files to [reports/](reports/):
 2. **Client letter** — `report-<scope>-vuln-<timestamp>.txt` — plain-text email-ready summary
 3. **Engagement sidecar** — `engagement-<client-slug>-<date>.json` — client name, operator, authorization reference, links to the two above, `tools_used` from precheck, `operator_notes` (free text for manual additions after the fact)
 
-The sidecar is the audit trail. Editing `operator_notes` after the engagement is encouraged for context that couldn't go into the client letter (physical security observations, conversations during the visit, follow-up items).
+The sidecar is the audit trail. Its schema is defined formally as `EngagementRecord` in [.agents/skills/network-discovery/OUTPUT_SCHEMAS.md](.agents/skills/network-discovery/OUTPUT_SCHEMAS.md#engagementrecord), and the required behavior for producing it is specified in [openspec/specs/network-assessment-engagement/spec.md](openspec/specs/network-assessment-engagement/spec.md). Read alone (without the linked technical report), the sidecar answers: who ran the engagement, when, against what scope, under what authorization, which phases completed, what tools were used, where each produced file lives.
+
+Editing `operator_notes` after the engagement is encouraged for context that couldn't go into the client letter (physical security observations, conversations during the visit, follow-up items). Other sidecar fields should not be hand-edited — they're the audit trail.
 
 ### Performance notes
 

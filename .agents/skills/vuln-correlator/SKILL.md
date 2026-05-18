@@ -19,10 +19,16 @@ This skill assumes you already have the scan data. It does NOT run nmap. It runs
 | Name | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `host` | object | — | A single `Host` record (or `TopologyNode`) with `ports[]` populated |
-| `cve_source` | enum | `"circl"` | `"circl"` (cve.circl.lu) or `"nvd"` (services.nvd.nist.gov) |
-| `vendor_advisory_check` | bool | `false` | If `true`, attempt a best-effort WebFetch of the vendor's recent security advisories page for any identified product. Use sparingly — slow and noisy. |
+| `cve_source` | enum | `"circl"` | `"circl"` (cve.circl.lu, requires outbound HTTPS), `"nvd"` (services.nvd.nist.gov, requires outbound HTTPS), or `"offline"` (local NVD snapshot, no network calls) |
+| `vendor_advisory_check` | bool | `false` | If `true`, attempt a best-effort WebFetch of the vendor's recent security advisories page for any identified product. Use sparingly — slow and noisy. Not available in `offline` mode. |
 | `max_cves_per_service` | int | `10` | Cap on CVE records emitted per service to keep the output bounded |
-| `per_lookup_timeout_seconds` | int | `15` | Per-API-call timeout |
+| `per_lookup_timeout_seconds` | int | `15` | Per-API-call timeout (applies to circl/nvd modes only — offline mode is filesystem-local) |
+| `snapshot_dir` | string | `./cve-snapshots/` | (Offline mode only) Root directory of local NVD snapshots. Overridable via env var `CVE_SNAPSHOT_DIR`. |
+| `snapshot_version` | string | `null` (most-recent) | (Offline mode only) Pin a specific snapshot version `v<YYYY-MM-DD>` for reproducibility. Default uses the most-recent snapshot found under `snapshot_dir`. Mutually exclusive with `snapshot_versions`. |
+| `snapshot_versions` | array | `null` | (Offline mode only) Array of snapshot versions to merge at lookup time, e.g. `["v2026-01-01", "v2026-05-15-kev-only"]`. Later entries override earlier on duplicate CVE IDs. Useful pattern: full historical + recent KEV-only refresh. |
+| `max_snapshot_age_days` | int | `30` | (Offline mode only) Emit a non-fatal warning if the selected snapshot is older than this many days. |
+| `verify_signature` | bool | `false` | When `true`, refuse to load a snapshot whose manifest doesn't have a valid gpg signature from a key in `trusted_signers`. Requires `gpg` on PATH. |
+| `trusted_signers` | array | `[]` | gpg key IDs / fingerprints allowed as snapshot signers. Only consulted when `verify_signature=true`. |
 
 If `host.ports` is empty or missing, return an empty findings block (not an error — silent hosts are a valid input).
 
@@ -45,6 +51,16 @@ If `host.ports` is empty or missing, return an empty findings block (not an erro
    ```
 
    If the source is unreachable, emit `{"code": "cve_source_unreachable", "service": "..."}` to the host's `errors` array and continue with the other services. Do not abort the whole correlator.
+
+   **Offline mode (`cve_source="offline"`):** instead of an HTTP request, perform a filesystem read:
+
+   ```sh
+   cat <snapshot_root>/by-product/<vendor_slug>/<product_slug>/<version>.json
+   ```
+
+   Where `<snapshot_root>` is `<snapshot_dir>/<snapshot_version>/` (e.g. `./cve-snapshots/v2026-05-17/`). Vendor/product slugs use the same normalization as the snapshot manager: lowercase, non-alphanumeric → underscore, collapse consecutive underscores. A missing file means zero known CVEs for that (vendor, product, version) — this is NOT an error.
+
+   See "Offline lookup mode" section below for snapshot discovery, version selection, staleness check, and missing-snapshot refusal rules.
 
 3. **Normalize results into `Cve` records.** For each CVE:
    - `id` — CVE ID
@@ -77,6 +93,122 @@ For each service without `product` AND `version`, do the following analysis usin
 | `snmp_community_public_works == true` | Default community string accepted — high-severity unauthenticated-read finding. |
 
 These findings get added to the `findings[]` array and do NOT populate the `cves[]` array (they're not CVEs). When the output is consumed downstream by `assessment-report`, these findings still feed into the recommendation derivation.
+
+The embedded-device fallback is **`cve_source`-agnostic** — it works identically in `circl`, `nvd`, and `offline` modes because it operates entirely on data already in the input (TLS cert details, header inventory, asset-age, port presence). No CVE source is consulted for the fallback findings.
+
+### Offline lookup mode (`cve_source="offline"`)
+
+This mode reads CVEs from a local NVD snapshot maintained by the [cve-snapshot-manager skill](../cve-snapshot-manager/SKILL.md) (operator-invoked via [/netd:cve-snapshot](../../commands/netd/cve-snapshot.md)). Designed for engagements where outbound HTTPS to CIRCL/NVD is blocked, unreliable, or against the engagement contract.
+
+#### Snapshot discovery
+
+The agent SHALL resolve the snapshot root in this priority order:
+
+1. Explicit `snapshot_dir` input → use that path
+2. `CVE_SNAPSHOT_DIR` environment variable → use that path
+3. Default: `./cve-snapshots/` (relative to the caller's cwd)
+
+Inside that directory, snapshots live as subdirectories `v<YYYY-MM-DD>/`. The agent SHALL select the most-recent (lexically-sorted last) `v<YYYY-MM-DD>` subdirectory UNLESS the operator pinned `snapshot_version` for reproducibility.
+
+#### Staleness check
+
+After selecting the snapshot, read `<snapshot_root>/manifest.json` and compare `snapshot_version` to the current date (UTC). If the snapshot is older than `max_snapshot_age_days` (default 30), emit a non-fatal warning into the output envelope's `errors[]`:
+
+```json
+{
+  "code": "snapshot_stale",
+  "snapshot_version": "v2026-04-01",
+  "age_days": 46,
+  "threshold_days": 30,
+  "message": "Snapshot is older than the configured freshness threshold. CVE data may miss recent disclosures. Run /netd:cve-snapshot to refresh."
+}
+```
+
+Continue with the lookup — staleness is a warning, not a refusal.
+
+#### Lookup invocation
+
+Parallel filesystem reads, one per (vendor, product, version) tuple, exactly as documented in the CVE correlation step above. Read failures (file missing) mean zero CVEs for that tuple — record nothing, no error.
+
+#### Output: snapshot version reporting
+
+When `cve_source="offline"` is used, the output envelope SHALL include:
+
+```json
+{
+  "cve_source_metadata": {
+    "source": "offline",
+    "snapshot_version": "v2026-05-17",
+    "snapshot_path": "./cve-snapshots/v2026-05-17",
+    "snapshot_age_days": 0,
+    "snapshot_cve_count": 245712
+  }
+}
+```
+
+This makes the engagement reproducible — a future re-run pinned to the same `snapshot_version` produces the same CVE results.
+
+#### Missing-snapshot refusal
+
+If `cve_source="offline"` is selected but no snapshot exists at the resolved path (the directory is missing OR contains no `v<YYYY-MM-DD>` subdirectories), the agent SHALL refuse with:
+
+```json
+{
+  "errors": [{
+    "code": "snapshot_missing",
+    "message": "No CVE snapshot found at <resolved_path>. Run /netd:cve-snapshot to create one.",
+    "resolved_snapshot_dir": "<path>",
+    "hint": "/netd:cve-snapshot"
+  }],
+  "result": {}
+}
+```
+
+The agent SHALL NOT silently fall back to `circl` or `nvd`. Offline mode is opt-in for a reason — operators selecting it have decided the engagement should be egress-free.
+
+#### Multi-snapshot merge (`snapshot_versions` array)
+
+When the operator passes `snapshot_versions=["v2026-01-01", "v2026-05-15-kev-only"]`, the skill queries each in the supplied order and merges results, deduplicating CVEs by ID. **Later snapshots override earlier ones** — so the typical pattern is `[<full historical>, <recent KEV-only refresh>]`: you get January's full CVE corpus plus May's fresh KEV catalog, without re-running the full 2 GB NVD ingest.
+
+If any listed snapshot doesn't exist, the skill refuses with `snapshot_missing` naming the missing entry — does NOT partially proceed with the snapshots that do exist.
+
+`snapshot_version` (singular) and `snapshot_versions` (plural) are mutually exclusive; passing both is a validation error.
+
+#### KEV (Known Exploited Vulnerabilities) check
+
+After fetching CVEs for each service, the skill SHALL look up each CVE ID in the snapshot's `kev/index.json`. When a match is found:
+
+- Set `cve.actively_exploited = true` on that Cve record
+- Bump `cve.severity` to at least `high` (KEV CVEs are by definition under active exploitation; lower severity values are misleading and would cause the operator to deprioritize a real threat)
+- Annotate the Cve record with a `kev` sub-object containing the KEV catalog fields (`vendorProject`, `product`, `vulnerabilityName`, `dateAdded`, `requiredAction`, `dueDate`)
+
+For multi-snapshot mode, the KEV index from the last-listed snapshot wins.
+
+If the snapshot has no `kev/index.json` (older snapshots, KEV download failed during ingest), the skill SHALL set `cve.actively_exploited = null` (unknown — not checked) and emit a single informational `errors[]` entry per host noting the missing KEV index. The skill does NOT refuse — KEV is enrichment, not a hard requirement.
+
+In online modes (`circl`/`nvd`), the same KEV check runs if a local snapshot is available. If no local snapshot exists in online mode, the KEV check is silently skipped (`actively_exploited` stays `null`, no error emitted — online mode operators may not have chosen to maintain a local snapshot).
+
+#### Signature verification (`verify_signature=true`)
+
+When enabled, the skill SHALL verify the snapshot's manifest signature before loading any data:
+
+```sh
+gpg --verify <snapshot_root>/manifest.json.sig <snapshot_root>/manifest.json
+```
+
+Refusal conditions:
+
+- Missing signature file at `<snapshot_root>/manifest.json.sig` → `{"code":"snapshot_unsigned"}`
+- gpg returns non-zero (signature invalid / corrupt / wrong key) → `{"code":"signature_invalid"}`
+- Signature verifies but the signing key ID is not in `trusted_signers` → `{"code":"signer_untrusted","signing_key":"<id>"}`
+
+In all three refusal cases, the skill does NOT load the snapshot. No partial data is consumed.
+
+Signature verification is opt-in because most single-operator setups don't need it. Enable when:
+- The snapshot is shared across a team (one operator maintains the canonical snapshot, others fetch and verify)
+- The operator wants a tamper-detection layer on their own snapshot
+
+`verify_signature=true` requires `gpg` on PATH. If gpg is missing, the skill refuses with `missing_binary`.
 
 6. **Compose a short narrative `findings` array** — 3–6 plain-language bullets summarizing what the operator should care about. Each finding ties to specific evidence:
 

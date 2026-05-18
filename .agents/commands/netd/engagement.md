@@ -32,15 +32,17 @@ If `scope` or `client=` is missing, ask the user.
 1. Parse all arguments. If `client=` is missing, ask. If `operator=` and `auth-ref=` aren't supplied, prompt the user once for both:
    ```
    Operator name (for the engagement record): _____
-   Authorization reference (SOW/ticket/email subject): _____
+   Authorization reference (SOW/ticket/email subject; "self" for own-infra): _____
    ```
-   These go into the sidecar and CANNOT be skipped — they're the engagement's paper trail.
+   These go into the sidecar and CANNOT be skipped — they're the engagement's paper trail. The slash command SHALL refuse to start the engagement if either is absent after the prompt (no silent defaults).
 
-2. Derive `engagement_id` = `<client-slug>-<YYYY-MM-DD>` where `client-slug` is the client name lowercased, spaces and special chars replaced with `-`.
+2. Derive `engagement_id` = `<client-slug>-<YYYY-MM-DD>` UTC, where `client-slug` is the client name lowercased, ampersands replaced with `and`, spaces and remaining punctuation replaced with `-`, multiple consecutive `-` collapsed to one.
 
-3. Run [/netd:precheck](precheck.md) and capture the per-tool status. If any tool has `status=missing` (blocker), stop and report the gap. Warnings (`outdated`, `degraded_shadowed`) are noted in the sidecar but allow the engagement to proceed.
+3. **Engagement-ID collision check.** Before proceeding, check whether `reports/engagement-<engagement_id>.json` already exists. If it does, refuse to overwrite — prompt the operator for a suffix (e.g. `-2`, `-followup`, `-take2`). The new sidecar then writes to `reports/engagement-<engagement_id>-<suffix>.json` and `engagement_id` is updated accordingly.
 
-4. **Scope confirmation prompt** — show the user the parsed scope, the local interface they're scanning from, the default gateway they'll be scanning toward, and ask for confirmation:
+4. Run [/netd:precheck](precheck.md) and capture the per-tool status into `tools_used[]` for the sidecar. Record this verbatim — every entry's `name`, `version`, `status`, and (where present) `alternate` + `fix` fields. Capture `precheck_completed_at` as the ISO 8601 UTC timestamp when precheck finished. If any tool has `status=missing` (blocker), stop, report the gap, and do NOT write a sidecar (no engagement attempted). Warnings (`outdated`, `degraded_shadowed`) are noted in the sidecar but allow the engagement to proceed.
+
+5. **Scope confirmation prompt** — show the user the parsed scope, the local interface they're scanning from, the default gateway they'll be scanning toward, and ask for confirmation:
    ```
    About to run engagement:
      Client:        <name>
@@ -52,49 +54,58 @@ If `scope` or `client=` is missing, ask the user.
 
    Proceed?
    ```
-   Wait for explicit confirmation. This is the moment to catch a wrong-network mistake before any scan packets leave.
+   Wait for explicit affirmative confirmation. This is the moment to catch a wrong-network mistake before any scan packets leave. If the operator declines or the prompt is not affirmatively answered, stop — no sidecar is written, no scan packets leave. Capture `scope_confirmed_at` as the ISO 8601 UTC timestamp when confirmation was received.
 
 ### Phase B — Execute (typically 3–5 minutes for a /24)
 
-5. Invoke [/netd:vuln-scan](vuln-scan.md) with the parsed scope + `port-set` + `scan-all` flag (if set) + `with-letter` (unless `no-letter` was passed). Capture:
+6. Capture `execution_started_at` as ISO 8601 UTC. Invoke [/netd:vuln-scan](vuln-scan.md) with the parsed scope + `port-set` + `scan-all` flag (if set) + `with-letter` (unless `no-letter` was passed). Capture:
    - The path of the technical JSON report it wrote
-   - The path of the client letter (if generated)
+   - The path of the client letter (if generated) — OR the literal string `"skipped: --no-letter"` when `no-letter` was passed
    - Its summary block (devices_discovered, devices_scanned, total_cves, highest_severity)
 
-   If `/netd:vuln-scan` fails fatally, write a sidecar with the failure recorded and stop. Don't proceed to Phase C with an incomplete scan.
+   When done, capture `execution_finished_at` as ISO 8601 UTC.
+
+   If `/netd:vuln-scan` fails fatally, still proceed to Phase C — write a sidecar with `summary.partial=true`, the error in `errors[]`, and the partial artifact paths in `artifacts` (so the audit record is preserved). Mark unfinished phases with `"skipped: execution failed - <reason>"`.
 
 ### Phase C — Sidecar (always, ~5 seconds)
 
-6. Write the engagement sidecar to `reports/engagement-<engagement_id>.json` with the structure documented in [playbooks/network-assessment.md](../../../playbooks/network-assessment.md#sidecar-engagement-file):
+7. Write the engagement sidecar to `reports/engagement-<engagement_id>.json` conforming to the `EngagementRecord` shape in [OUTPUT_SCHEMAS.md](../../skills/network-discovery/OUTPUT_SCHEMAS.md). All required fields per the schema:
    ```json
    {
      "engagement_id": "...",
-     "client": { "name": "..." },
-     "operator": { "name": "..." },
-     "scope": {
-       "ranges": [ ... ],
-       "exclusions": [],
-       "authorization_reference": "...",
-       "authorization_date": null
-     },
+     "client": { "name": "...", "primary_contact": null, "site_address": null },
+     "operator": { "name": "...", "email": null },
+     "authorization": { "reference": "...", "date": null },
+     "scope": { "ranges": [ ... ], "exclusions": [] },
      "playbook": "network-assessment",
      "playbook_version": "1.0",
      "started_at": "<phase A start, ISO 8601 UTC>",
      "finished_at": "<phase C complete, ISO 8601 UTC>",
+     "precheck_completed_at": "<from step 4>",
+     "scope_confirmed_at":    "<from step 5>",
+     "execution_started_at":  "<from step 6 start>",
+     "execution_finished_at": "<from step 6 finish>",
+     "sidecar_written_at":    "<now>",
      "scans": [
-       {
-         "scope": "...",
-         "report_json": "reports/report-...-vuln-...Z.json",
-         "client_letter": "reports/report-...-vuln-...Z.txt"
-       }
+       { "scope": "...", "report_json": "reports/report-...-vuln-...Z.json", "client_letter": "reports/report-...-vuln-...Z.txt" }
      ],
-     "summary": { /* from vuln-scan summary */ },
-     "tools_used": [ /* from precheck */ ],
-     "operator_notes": ""
+     "summary": { /* from vuln-scan summary, plus "partial": false (or true if execution failed) */ },
+     "tools_used": [ /* verbatim from precheck */ ],
+     "artifacts": {
+       "technical_report": "reports/report-...-vuln-...Z.json",
+       "client_letter":    "reports/report-...-vuln-...Z.txt",
+       "sidecar":          "reports/engagement-<engagement_id>.json"
+     },
+     "operator_notes": "",
+     "errors": []
    }
    ```
 
-   `operator_notes` starts empty. The operator fills it in by hand after the engagement during Phase 3 (manual review) of the playbook.
+   **Field rules** (per the EngagementRecord schema):
+   - Every `*_at` phase timestamp MUST be either an ISO 8601 UTC string OR `"skipped: <reason>"`. Never `null`, never absent.
+   - `artifacts.client_letter` MUST be `"skipped: --no-letter"` (not `null`) when the operator passed `no-letter`. Same for any other deliberately-skipped artifact.
+   - `artifacts.sidecar` references this file's own path.
+   - `operator_notes` starts as `""`. The operator may edit it by hand later; other fields should not be hand-edited because that breaks the audit trail.
 
 7. Final output:
    ```

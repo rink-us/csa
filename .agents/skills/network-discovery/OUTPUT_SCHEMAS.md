@@ -138,6 +138,105 @@ All timestamps are ISO 8601 UTC (`2026-05-17T12:34:56Z`).
 
 - `type` (`"default_route"` | `"same_subnet"` | `"observed_hop"`)
 
+## `EngagementRecord`
+
+The audit-attesting sidecar artifact produced by the `network-assessment-engagement` capability. Read alone (without the linked technical report or client letter), it answers: who ran the engagement, when, against what scope, under what authorization, which phases completed, what tools were used, and where each produced file lives.
+
+```json
+{
+  "engagement_id": "acme-corp-2026-05-17",
+  "client": {
+    "name": "Acme Corp",
+    "primary_contact": "jane@acme.example",
+    "site_address": null
+  },
+  "operator": {
+    "name": "Kevin Doe",
+    "email": "k@example.com"
+  },
+  "authorization": {
+    "reference": "SOW-2026-04-Acme",
+    "date": "2026-04-15"
+  },
+  "scope": {
+    "ranges": ["192.168.1.0/24"],
+    "exclusions": []
+  },
+  "playbook": "network-assessment",
+  "playbook_version": "1.0",
+  "started_at": "2026-05-17T19:42:00Z",
+  "finished_at": "2026-05-17T19:48:00Z",
+  "precheck_completed_at": "2026-05-17T19:42:18Z",
+  "scope_confirmed_at":    "2026-05-17T19:42:55Z",
+  "execution_started_at":  "2026-05-17T19:42:58Z",
+  "execution_finished_at": "2026-05-17T19:47:54Z",
+  "sidecar_written_at":    "2026-05-17T19:48:00Z",
+  "scans": [
+    {
+      "scope": "192.168.1.0/24",
+      "report_json":   "reports/report-192.168.1.0_24-vuln-2026-05-17-1942Z.json",
+      "client_letter": "reports/report-192.168.1.0_24-vuln-2026-05-17-1942Z.txt"
+    }
+  ],
+  "summary": {
+    "hosts_discovered": 13,
+    "hosts_scanned": 4,
+    "total_cves": 12,
+    "highest_severity": "high",
+    "partial": false
+  },
+  "tools_used": [
+    { "name": "nmap",    "version": "7.99",            "status": "ok" },
+    { "name": "openssl", "version": "LibreSSL 3.3.6",  "status": "degraded_shadowed",
+      "alternate": { "path": "/opt/homebrew/opt/openssl@3/bin/openssl", "version": "OpenSSL 3.6.2" },
+      "fix": "export PATH=\"/opt/homebrew/opt/openssl@3/bin:$PATH\"" }
+  ],
+  "artifacts": {
+    "technical_report": "reports/report-192.168.1.0_24-vuln-2026-05-17-1942Z.json",
+    "client_letter":    "reports/report-192.168.1.0_24-vuln-2026-05-17-1942Z.txt",
+    "sidecar":          "reports/engagement-acme-corp-2026-05-17.json"
+  },
+  "operator_notes": "",
+  "errors": []
+}
+```
+
+### Required vs optional fields
+
+| Field | Required? | Notes |
+| --- | --- | --- |
+| `engagement_id` | required | Derived as `<slugified-client-name>-<YYYY-MM-DD>` UTC. Collisions resolved by operator-supplied suffix. |
+| `client.name` | required | Free-form string. |
+| `client.primary_contact` / `client.site_address` | optional | May be `null`. |
+| `operator.name` | required | Free-form string. |
+| `operator.email` | optional | May be `null`. |
+| `authorization.reference` | required | Free-form. `"self"` is acceptable for own-infra engagements. |
+| `authorization.date` | optional | ISO 8601 date or `null`. |
+| `scope.ranges` | required | Non-empty array of CIDRs / ranges / IPs. |
+| `scope.exclusions` | required | Array (may be empty). |
+| `playbook` | required | Currently always `"network-assessment"`. |
+| `playbook_version` | required | Schema version, currently `"1.0"`. |
+| `started_at` / `finished_at` | required | ISO 8601 UTC. |
+| `precheck_completed_at` / `scope_confirmed_at` / `execution_started_at` / `execution_finished_at` / `sidecar_written_at` | required | ISO 8601 UTC when the phase completed, OR the literal string starting with `"skipped: "` followed by a reason when the phase was deliberately bypassed. |
+| `scans` | required | Array (may be empty if execution failed before producing any scan output). |
+| `summary` | required | Object. `partial` flag is required and indicates whether the engagement completed all planned scans. |
+| `tools_used` | required | Array of `{name, version, status, alternate?, fix?}` from the precheck phase. |
+| `artifacts` | required | Object with three keys: `technical_report`, `client_letter`, `sidecar`. Each value is either a relative file path OR a `"skipped: <reason>"` string. **Null and absent are NOT valid.** |
+| `operator_notes` | required | Empty string `""` at write time; intended for post-hoc operator edits. |
+| `errors` | required | Array (may be empty). Same shape as the standard envelope errors. |
+
+### Phase timestamp convention
+
+Each of the five `*_at` phase fields holds either:
+- An ISO 8601 UTC timestamp recording when the phase completed (the happy path)
+- A string literal starting with `"skipped: "` followed by an operator-supplied reason (e.g. `"skipped: operator override - running from vetted golden image"`)
+
+`null` and absent are NOT valid values — an auditor reading the sidecar must always be able to tell whether a phase happened, was deliberately bypassed, or was never reached.
+
+### Backwards compatibility
+
+Sidecars produced before this schema version may lack the five `*_at` phase timestamp fields, the `artifacts` block, or the explicit `operator_notes` field. Such sidecars are valid pre-v1.0 records but produce a non-fatal warning when read by spec-aware tooling. v1.0+ sidecars MUST include all required fields.
+
 ## Top-level result envelope
 
 Every skill returns a single JSON object with at least:
