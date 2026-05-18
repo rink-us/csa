@@ -218,3 +218,18 @@ The sidecar is the source of truth for "what happened at this engagement." Edit 
 ## Version
 
 This playbook is v1.0. When the underlying skills change in a way that affects the procedure (new classification rules, new scan defaults, additional report sections), bump `playbook_version` in the sidecar and update this document.
+
+## Specs
+
+The behaviors invoked by this playbook are formally specified under [openspec/specs/](../openspec/specs/). When the playbook says something like "the classifier identifies device types from MAC vendor + PTR hostname," that's a requirement with testable Scenarios in the corresponding spec.
+
+| Playbook reference | Formal spec |
+|---|---|
+| Device classification rules + skip-by-class | [openspec/specs/network-mapper/spec.md](../openspec/specs/network-mapper/spec.md) |
+| Banner-grab playbook + embedded-device signal capture | [openspec/specs/service-enumerator/spec.md](../openspec/specs/service-enumerator/spec.md) |
+| Anti-pattern guard against aggressive nmap fingerprinting | [openspec/specs/port-scanner/spec.md](../openspec/specs/port-scanner/spec.md) |
+| Per-host CVE lookup + embedded-device fallback findings | [openspec/specs/vuln-correlator/spec.md](../openspec/specs/vuln-correlator/spec.md) |
+| Merged technical report structure + recommendation triggers | [openspec/specs/assessment-report/spec.md](../openspec/specs/assessment-report/spec.md) |
+| Client letter template + tone rules | [openspec/specs/client-report/spec.md](../openspec/specs/client-report/spec.md) |
+
+If the playbook diverges from any of the linked specs, the spec is the source of truth — file a follow-up openspec change to bring the playbook in line.

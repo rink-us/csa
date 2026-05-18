@@ -59,6 +59,7 @@ It's common for embedded device admin UIs to deliberately omit the `Server:` hea
 
 - `tls.subject_org` and `tls.issuer_org` (often identifies vendor: `O=Verizon`, `O=Canon`, `O=Hikvision`, etc.)
 - `tls.validity_window_years` (a 50-year validity window is a signal of ISP-managed CPE; a 90-day window is typical of an actively-managed cert)
+- `tls.handshake_result` — `"ok"` when the chain was retrieved successfully, `"failed"` when the openssl probe could not extract a certificate. On `failed`, also set `tls.interpretation` with a short human-readable explanation (e.g. `"Either TLS is misconfigured on this port, only certain TLS versions accepted, or the printer responds with non-TLS data when probed on 443"`).
 - `headers.security_headers_present` and `headers.security_headers_missing` — checklist against HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy
 - `behavior.redirect_to_https` (HTTP returns 301 → HTTPS is a positive signal; HTTP serves content directly is a recommendation surface)
 - `headers.last_modified_year` — when explicit `Server:` is missing, the `Last-Modified` header on static assets is a useful indirect age signal (a printer admin UI returning `Last-Modified: 2007` means the firmware likely hasn't been updated since then)

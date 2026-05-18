@@ -98,6 +98,23 @@ These typically complete in seconds with reliable output. Reserve `nmap -sV --ve
 
 If you must run nmap on embedded devices, use `--version-intensity 5` (the documented default) and skip `-sC`.
 
+### Operator override
+
+When the operator passes a target with a known `device_class` in the embedded set (`gateway`, `router_or_ap`, `printer`, `iot_camera`, `vendor_cloud_iot`, `network_device`) AND explicitly requests `version_intensity=9` or `-sC`, the skill SHALL honor the operator's choice but include a warning in the result envelope:
+
+```json
+{
+  "errors": [{
+    "code": "embedded_device_aggressive_scan",
+    "message": "Operator requested --version-intensity 9 against device_class=printer. This commonly exhausts --host-timeout against embedded admin UIs. Proceeding as requested."
+  }]
+}
+```
+
+Operator override is honored because the device-class taxonomy is a heuristic and the operator may have local knowledge that overrides it (e.g. a "printer" that's actually been reflashed to run a full Linux server stack).
+
+Targets in non-embedded classes (`server`, `unknown`) may use intensity 9 without any warning — they're the expected case for aggressive fingerprinting.
+
 ## Output normalization (nmap XML → schema)
 
 From the XML `<host>` block, map:
@@ -136,7 +153,8 @@ Wrap in the standard envelope:
 
 - **`nmap` not found** → emit a fatal `missing_binary` error per the envelope in [DEPENDENCIES.md](../network-discovery/DEPENDENCIES.md). Do not fall back to a hand-rolled socket scan.
 - **Target unreachable / all ports filtered** → return `Host.status = "unreachable"` with an empty `ports` array. This is not an error.
-- **Timeout reached** → return whatever ports were enumerated before the timeout with a non-fatal `error: { "code": "timeout", "message": "scan exceeded N seconds" }`.
+- **Per-host timeout reached (`--host-timeout`)** → return whatever ports were enumerated before the timeout with a non-fatal `error: { "code": "host_timeout", "message": "host scan exceeded N seconds" }`.
+- **Total runtime timeout reached (`timeout_seconds`)** → same shape but `"code": "timeout"`.
 
 ## Example invocations
 
