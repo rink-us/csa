@@ -21,11 +21,34 @@ This is the composer skill: when fed the outputs of `service-enumerator` and `tl
 | `scope` | string\|array | — | CIDR (`10.0.0.0/24`), range (`10.0.0.1-10.0.0.50`), single IP, or array of any of these |
 | `discovery_method` | enum | `"ping"` | `"ping"` (ICMP/`-PE`, unprivileged) or `"arp"` (`-PR`, privileged, same-subnet only) |
 | `device_classification` | bool | `true` | Run light port-fingerprint probe on each up host |
+| `classify_first` | bool | `true` | Run device-class identification (PTR + MAC vendor + hostname pattern) BEFORE port-fingerprinting. Lets the caller skip port-scanning known phone-home device classes entirely. |
+| `skip_classes` | array | `["phone","vendor_cloud_iot"]` | Device classes whose port-scan phase should be skipped because they don't expose local services. Set to `[]` to scan everything. |
 | `correlate_with` | object | `null` | Prior outputs from other skills — see "Correlation" |
 | `allow_wide_scope` | bool | `false` | Required to scan wider than /16 |
 | `timeout_seconds` | int | `900` | 15 min cap for a /24 |
 
 If `scope` is missing or malformed, refuse with a validation error.
+
+## Device classification taxonomy
+
+`classify_first` produces a `device_class` per host using three signals: PTR hostname (from reverse DNS), MAC OUI vendor (from ARP discovery), and open-port pattern (from fingerprint probe if `device_classification=true`).
+
+| `device_class` | Identifying signals (any one matches) | Default scan behavior |
+| --- | --- | --- |
+| `gateway` | IP equals detected default gateway | Always scan (treat as router admin surface) |
+| `router_or_ap` | MAC vendor in {Arcadyan, Netgear, ASUS, TP-Link, Linksys, Cisco-Linksys, Ubiquiti, Eero, Aruba} | Always scan |
+| `printer` | MAC vendor in {Canon, HP, Brother, Epson, Xerox, Ricoh, Konica}; OR open port 9100/515/631 | Always scan (printer admin UIs commonly weak) |
+| `network_device` | MAC vendor in {Cisco, Juniper, Mikrotik}; OR open SNMP 161 + 22/443 | Always scan |
+| `server` | PTR hostname matches `*.local` AND has 22/80/443; OR explicit hostname containing `srv`, `server`, `nas`, `prox`, `vmware`, `synology`, `qnap` | Always scan |
+| `phone` | PTR matches `Pixel-*`, `*-iPhone`, `iPhone-*`, `Galaxy-*`, `*-Android`; OR MAC is locally-administered AND no open ports in fingerprint probe | **Skipped** by default (no local services worth port-scanning) |
+| `vendor_cloud_iot` | PTR matches `amazon-*`, `echo-*`, `Nest-*`, `*Chromecast*`, `OwletCam-*`, `lwip*`, `tuya-*`, `*-meross-*`, `Shelly-*`; OR MAC vendor in {Amazon Technologies, Google, Tuya Smart, Espressif, Shenzhen Bilian, Sonos, Ring, Sengled, LIFX} | **Skipped** by default (phone-home-only architecture) |
+| `apple_device` | MAC vendor is Apple AND PTR doesn't match phone patterns | Scan (could be a Mac with services) |
+| `iot_camera` | PTR matches `*-cam-*`, `*Cam*`, `Hikvision*`, `Dahua*`; OR open 554 (RTSP) | Always scan (cameras frequently exposed) |
+| `unknown` | None of the above match | Scan (better to scan unnecessarily than miss a real service) |
+
+The classification table is heuristic and updates incrementally — when new vendor or hostname patterns become common, append to the relevant row. Conservatism rule: **when uncertain, classify as `unknown` so the caller still scans the host**. Skipping should require high-confidence identification, not absence of contradicting evidence.
+
+The classification is emitted in `TopologyNode.device_class` (in addition to the existing `device_type` field) so the caller can filter the node list before launching port scans.
 
 ## Scope validation
 
