@@ -163,7 +163,6 @@ The audit-attesting sidecar artifact produced by the `network-assessment-engagem
     "exclusions": []
   },
   "playbook": "network-assessment",
-  "playbook_version": "1.0",
   "started_at": "2026-05-17T19:42:00Z",
   "finished_at": "2026-05-17T19:48:00Z",
   "precheck_completed_at": "2026-05-17T19:42:18Z",
@@ -215,7 +214,6 @@ The audit-attesting sidecar artifact produced by the `network-assessment-engagem
 | `scope.ranges` | required | Non-empty array of CIDRs / ranges / IPs. |
 | `scope.exclusions` | required | Array (may be empty). |
 | `playbook` | required | Currently always `"network-assessment"`. |
-| `playbook_version` | required | Schema version, currently `"1.0"`. |
 | `started_at` / `finished_at` | required | ISO 8601 UTC. |
 | `precheck_completed_at` / `scope_confirmed_at` / `execution_started_at` / `execution_finished_at` / `sidecar_written_at` | required | ISO 8601 UTC when the phase completed, OR the literal string starting with `"skipped: "` followed by a reason when the phase was deliberately bypassed. |
 | `scans` | required | Array (may be empty if execution failed before producing any scan output). |
@@ -233,18 +231,13 @@ Each of the five `*_at` phase fields holds either:
 
 `null` and absent are NOT valid values — an auditor reading the sidecar must always be able to tell whether a phase happened, was deliberately bypassed, or was never reached.
 
-### Backwards compatibility
-
-Sidecars produced before this schema version may lack the five `*_at` phase timestamp fields, the `artifacts` block, or the explicit `operator_notes` field. Such sidecars are valid pre-v1.0 records but produce a non-fatal warning when read by spec-aware tooling. v1.0+ sidecars MUST include all required fields.
-
 ### Pentest extensions (when `playbook="pentest"`)
 
-When the engagement is a pentest (not a network-assessment), the sidecar includes these additional required fields beyond the base EngagementRecord. **Schema version 1.1+** (this is the current version — see "Pentest schema versioning" below for v1.0 differences):
+When the engagement is a pentest (not a network-assessment), the sidecar includes these additional required fields beyond the base EngagementRecord:
 
 ```json
 {
   "playbook": "pentest",
-  "playbook_version": "1.1",
   "scope": ["10.0.0.0/24", "192.168.50.0/24"],
   "sessions": [
     {
@@ -265,31 +258,8 @@ When the engagement is a pentest (not a network-assessment), the sidecar include
 **Session shape.** Multi-day pentests use `sessions[]` to record each contiguous work block separately. Single-session engagements still emit a one-element `sessions[]` array for schema consistency.
 
 **Field rules.**
-- `playbook_version` is required (see versioning section below)
 - `scope` is required and non-empty; it is the operator-supplied list of CIDRs / IPs / hostnames that `exploit-correlator` re-validates targets against
 - `sessions[]` is required and has at least one entry
-
-### Pentest schema versioning
-
-The pentest sidecar schema has two versions in active use:
-
-| Version | Recorded as | Contains | Notes |
-| --- | --- | --- | --- |
-| 1.0 | `playbook_version="1.0"` | `roe.text`, `roe.reference`, `roe.parsed_scope.*`, `roe.parsed_overrides`, `soc_notified_at`, `sessions[].soc_notified_at`, `scope_creep_acknowledgments[]` (all REQUIRED) | The original spec. Strong authorization-capture guards. Run by checking out the archived `pentest-engagement` change directory. |
-| 1.1+ | `playbook_version="1.1"` | The fields above are ABSENT entirely (not null — not present as keys). `scope` field added as required. | Current spec. Authorization documentation is operator-maintained outside the tool. |
-
-Downstream consumers reading a pentest sidecar MUST check `playbook_version` and adapt:
-
-- v1.0 consumer reading a v1.0 sidecar: works as designed
-- v1.0 consumer reading a v1.1 sidecar: **will fail** looking for ROE/SOC fields that aren't there — must be updated
-- v1.1-aware consumer reading a v1.0 sidecar: works — the extra ROE/SOC fields are simply unknown extra keys
-- v1.1-aware consumer reading a v1.1 sidecar: works as designed
-
-### Backwards compatibility
-
-A v1.1-aware reader of a v1.0 sidecar simply ignores extra fields it doesn't recognize. A v1.0-aware reader of a v1.1 sidecar will fail to find expected fields — those readers must be updated to handle v1.1. The `playbook_version` field is the discriminator.
-
-Pre-existing v1.0 sidecars remain valid v1.0 records. They are NOT migrated to v1.1 (that would require recreating data that no longer exists in the new schema). Their ROE/SOC fields stay populated; consumers parsing them must respect v1.0 rules.
 
 ## `PentestEvidenceRecord`
 
@@ -348,7 +318,7 @@ Produced by the `exploit-correlator` capability — one file per exploit attempt
 | `operator_notes` | required for executed attempts | Operator's observation of what happened. Free text. |
 | `correction_of` | optional | Set on correction records; references the prior `record_id` being corrected. The original record stays in place — never modified. |
 | `correction_reason` | required when `correction_of` is set | Brief explanation of what was wrong. |
-| `refusal_acknowledgment_reason` | required when `outcome="refused_out_of_scope"` | Operator's reason for the attempt (operator error / pivot discovery / ROE ambiguity). |
+| `refusal_acknowledgment_reason` | required when `outcome="refused_out_of_scope"` | Operator's reason for the attempt (operator error / pivot discovery / scope ambiguity). |
 
 ### Append-only rule
 

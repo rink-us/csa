@@ -78,7 +78,6 @@ If `scope` or `client=` is missing, ask the user.
      "authorization": { "reference": "...", "date": null },
      "scope": { "ranges": [ ... ], "exclusions": [] },
      "playbook": "network-assessment",
-     "playbook_version": "1.0",
      "started_at": "<phase A start, ISO 8601 UTC>",
      "finished_at": "<phase C complete, ISO 8601 UTC>",
      "precheck_completed_at": "<from step 4>",

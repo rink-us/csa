@@ -165,7 +165,7 @@ If the client engagement is recurring (quarterly, annual), note the next assessm
 
 ## Sidecar engagement file
 
-`/netd:engagement` writes a JSON file to `reports/engagement-<client-slug>-<date>.json` conforming to the **`EngagementRecord` schema** documented in [.agents/skills/network-discovery/OUTPUT_SCHEMAS.md](../.agents/skills/network-discovery/OUTPUT_SCHEMAS.md#engagementrecord). The required behavior for producing it is in the capability spec at [openspec/specs/network-assessment-engagement/spec.md](../openspec/specs/network-assessment-engagement/spec.md).
+`/netd:engagement` writes a JSON file to `reports/engagement-<client-slug>-<date>.json` conforming to the **`EngagementRecord` schema** documented in [.agents/skills/network-discovery/OUTPUT_SCHEMAS.md](../.agents/skills/network-discovery/OUTPUT_SCHEMAS.md#engagementrecord).
 
 For the full field list, validation rules, and example payload, follow the OUTPUT_SCHEMAS.md link. A short summary:
 
@@ -209,7 +209,7 @@ Do NOT edit other fields by hand. The audit trail depends on the automated field
 `vuln-correlator` supports three CVE sources: `circl` (default), `nvd`, and `offline`. The default works for most engagements — outbound HTTPS to `cve.circl.lu` is usually fine. Switch to `offline` when any of these apply:
 
 - **Air-gapped client environment.** No outbound internet from the assessment laptop. CIRCL and NVD are unreachable by design. Offline mode lets the engagement still produce CVE findings.
-- **Restrictive client egress.** The engagement contract or client policy forbids outbound HTTPS during the assessment window — typically to keep the client's SOC from triaging your traffic as suspicious.
+- **Restrictive client egress.** The engagement contract or client policy forbids outbound HTTPS during the assessment window — typically to keep the client's defenders from triaging your traffic as suspicious.
 - **Unreliable field connectivity.** Cellular hotspots and customer guest Wi-Fi often throttle or block NVD's feed endpoints in ways that aren't visible until you're mid-engagement. Offline mode turns "engagement failed at the CVE phase" into "engagement degraded to slightly older data."
 - **Engagement reproducibility matters.** Pin `snapshot_version` to a specific snapshot date and a re-run weeks later produces the same CVE findings. Useful for compliance follow-ups and incident timeline reconstruction.
 
@@ -228,23 +228,3 @@ The `/netd:engagement` command will eventually accept `cve-source=offline` as a 
 
 The sidecar's `tools_used` block will include the snapshot version that was active, so the engagement record stays auditable.
 
----
-
-## Version
-
-This playbook is v1.0. When the underlying skills change in a way that affects the procedure (new classification rules, new scan defaults, additional report sections), bump `playbook_version` in the sidecar and update this document.
-
-## Specs
-
-The behaviors invoked by this playbook are formally specified under [openspec/specs/](../openspec/specs/). When the playbook says something like "the classifier identifies device types from MAC vendor + PTR hostname," that's a requirement with testable Scenarios in the corresponding spec.
-
-| Playbook reference | Formal spec |
-|---|---|
-| Device classification rules + skip-by-class | [openspec/specs/network-mapper/spec.md](../openspec/specs/network-mapper/spec.md) |
-| Banner-grab playbook + embedded-device signal capture | [openspec/specs/service-enumerator/spec.md](../openspec/specs/service-enumerator/spec.md) |
-| Anti-pattern guard against aggressive nmap fingerprinting | [openspec/specs/port-scanner/spec.md](../openspec/specs/port-scanner/spec.md) |
-| Per-host CVE lookup + embedded-device fallback findings | [openspec/specs/vuln-correlator/spec.md](../openspec/specs/vuln-correlator/spec.md) |
-| Merged technical report structure + recommendation triggers | [openspec/specs/assessment-report/spec.md](../openspec/specs/assessment-report/spec.md) |
-| Client letter template + tone rules | [openspec/specs/client-report/spec.md](../openspec/specs/client-report/spec.md) |
-
-If the playbook diverges from any of the linked specs, the spec is the source of truth — file a follow-up openspec change to bring the playbook in line.
