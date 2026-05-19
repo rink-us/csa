@@ -66,6 +66,8 @@ Audit the local system against the required external CLIs listed in [.agents/ski
 
    Surface the verdict as the last line so the user can decide whether to fix before running a real scan.
 
+**Pentest tooling** is checked separately by `/pentest:engagement` at Phase A — it covers `msfconsole`, `impacket`, `searchsploit`, `wpscan`, `nikto`, `nuclei` (see [.agents/skills/network-discovery/DEPENDENCIES.md](../../skills/network-discovery/DEPENDENCIES.md#pentest-tooling)). `/netd:precheck` is for the recon-and-posture bundle and intentionally does not probe pentest extras — running pentest tools on a machine that doesn't host engagements is itself a signal worth avoiding (an incident responder finding Metasploit on a sales laptop investigates further).
+
 **Guardrails**
 
 - Don't install anything. This command only diagnoses; the user runs the fix command themselves.

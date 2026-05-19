@@ -163,7 +163,6 @@ The audit-attesting sidecar artifact produced by the `network-assessment-engagem
     "exclusions": []
   },
   "playbook": "network-assessment",
-  "playbook_version": "1.0",
   "started_at": "2026-05-17T19:42:00Z",
   "finished_at": "2026-05-17T19:48:00Z",
   "precheck_completed_at": "2026-05-17T19:42:18Z",
@@ -215,7 +214,6 @@ The audit-attesting sidecar artifact produced by the `network-assessment-engagem
 | `scope.ranges` | required | Non-empty array of CIDRs / ranges / IPs. |
 | `scope.exclusions` | required | Array (may be empty). |
 | `playbook` | required | Currently always `"network-assessment"`. |
-| `playbook_version` | required | Schema version, currently `"1.0"`. |
 | `started_at` / `finished_at` | required | ISO 8601 UTC. |
 | `precheck_completed_at` / `scope_confirmed_at` / `execution_started_at` / `execution_finished_at` / `sidecar_written_at` | required | ISO 8601 UTC when the phase completed, OR the literal string starting with `"skipped: "` followed by a reason when the phase was deliberately bypassed. |
 | `scans` | required | Array (may be empty if execution failed before producing any scan output). |
@@ -233,10 +231,6 @@ Each of the five `*_at` phase fields holds either:
 
 `null` and absent are NOT valid values — an auditor reading the sidecar must always be able to tell whether a phase happened, was deliberately bypassed, or was never reached.
 
-### Backwards compatibility
-
-Sidecars produced before this schema version may lack the five `*_at` phase timestamp fields, the `artifacts` block, or the explicit `operator_notes` field. Such sidecars are valid pre-v1.0 records but produce a non-fatal warning when read by spec-aware tooling. v1.0+ sidecars MUST include all required fields.
-
 ### Pentest extensions (when `playbook="pentest"`)
 
 When the engagement is a pentest (not a network-assessment), the sidecar includes these additional required fields beyond the base EngagementRecord:
@@ -244,45 +238,28 @@ When the engagement is a pentest (not a network-assessment), the sidecar include
 ```json
 {
   "playbook": "pentest",
-  "roe": {
-    "text": "<verbatim scope-of-work excerpt, ≥100 chars>",
-    "reference": "SOW-2026-04-Acme",
-    "parsed_scope": {
-      "in_scope_ranges": ["10.0.0.0/24", "192.168.50.0/24"],
-      "out_of_scope": ["10.0.0.1"],
-      "prohibited_techniques": ["DoS", "social_engineering", "password_spraying"],
-      "engagement_window": { "start": "2026-05-18T13:00:00Z", "end": "2026-05-20T17:00:00Z" }
-    },
-    "parsed_overrides": null
-  },
+  "scope": ["10.0.0.0/24", "192.168.50.0/24"],
   "sessions": [
     {
       "session_id": "s1",
       "started_at": "2026-05-18T13:00:00Z",
       "finished_at": "2026-05-18T19:30:00Z",
-      "soc_notified_at": "2026-05-18T12:55:00Z",
       "evidence_record_ids": ["rec-...", "rec-..."]
     }
   ],
-  "soc_notified_at": "2026-05-18T12:55:00Z",
   "evidence_directory": "reports/pentest-evidence/<engagement_id>/",
   "narrative_path": "reports/<engagement_id>-narrative.md",
   "exploit_attempts_count": 12,
   "successful_exploits_count": 3,
-  "mitre_attack_techniques_used": ["T1190", "T1059", "T1078"],
-  "scope_creep_acknowledgments": [
-    { "attempt_record_id": "rec-...", "operator_reason": "pivot discovery; not exploited" }
-  ]
+  "mitre_attack_techniques_used": ["T1190", "T1059", "T1078"]
 }
 ```
 
-**Session shape.** Multi-day pentests use `sessions[]` to record each contiguous work block separately. Single-session engagements still emit a one-element `sessions[]` array for schema consistency. Each session has its own SOC notification timestamp (re-notify per session — SOC shifts change). Top-level `soc_notified_at` mirrors the first session's value for quick access.
+**Session shape.** Multi-day pentests use `sessions[]` to record each contiguous work block separately. Single-session engagements still emit a one-element `sessions[]` array for schema consistency.
 
 **Field rules.**
-- `roe.text` is required and must be ≥100 chars of meaningful content (per `pentest-engagement` spec Requirement 1)
-- `roe.parsed_overrides` is non-null when the operator manually corrected the auto-parse
-- `sessions[].soc_notified_at` follows the same `"skipped: <reason>"` convention as other phase timestamps
-- `scope_creep_acknowledgments[]` must have one entry per evidence record with `outcome="refused_out_of_scope"`
+- `scope` is required and non-empty; it is the operator-supplied list of CIDRs / IPs / hostnames that `exploit-correlator` re-validates targets against
+- `sessions[]` is required and has at least one entry
 
 ## `PentestEvidenceRecord`
 
@@ -341,7 +318,7 @@ Produced by the `exploit-correlator` capability — one file per exploit attempt
 | `operator_notes` | required for executed attempts | Operator's observation of what happened. Free text. |
 | `correction_of` | optional | Set on correction records; references the prior `record_id` being corrected. The original record stays in place — never modified. |
 | `correction_reason` | required when `correction_of` is set | Brief explanation of what was wrong. |
-| `refusal_acknowledgment_reason` | required when `outcome="refused_out_of_scope"` | Operator's reason for the attempt (operator error / pivot discovery / ROE ambiguity). |
+| `refusal_acknowledgment_reason` | required when `outcome="refused_out_of_scope"` | Operator's reason for the attempt (operator error / pivot discovery / scope ambiguity). |
 
 ### Append-only rule
 

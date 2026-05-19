@@ -31,7 +31,20 @@ The `/pentest:engagement` workflow requires additional dependencies beyond the n
 | `msfconsole` (Metasploit Framework) | required for pentest | exploit-correlator | The standard exploitation framework. Install via `brew install metasploit` (macOS), `apt install metasploit-framework` (Debian/Ubuntu), or use the upstream installer on Fedora/RHEL. **Canonical environment: Kali Linux**, which ships Metasploit pre-installed. |
 | `impacket` (Python toolkit) | required for pentest | exploit-correlator (Windows-targeting modules) | A collection of Python classes for working with network protocols. Install via `brew install impacket` (macOS) or `apt install python3-impacket` (Debian/Ubuntu). Pre-installed on Kali Linux. |
 | `searchsploit` (from `exploitdb` package) | optional for pentest | exploit-correlator (ExploitDB lookup) | CLI front-end to the ExploitDB index. Install via `apt install exploitdb` (Debian/Ubuntu). On macOS, install via `brew install exploitdb`. Pre-installed on Kali Linux. Without `searchsploit`, the ExploitDB candidate-lookup step is skipped. |
+| `wpscan` (Ruby gem) | optional for pentest | exploit-correlator (WordPress targets) | WordPress security scanner. **Most common gap on macOS** — not packaged by Homebrew. Install via `gem install wpscan`, which requires Ruby 2.7+ (macOS's system Ruby is 2.6; run `brew install ruby` first and prepend the brew Ruby to PATH). On Debian/Ubuntu: `apt install wpscan`. Pre-installed on Kali Linux. Alternative: `docker pull wpscanteam/wpscan`. Needs a free WPScan API token (https://wpscan.com) for vulnerability-database lookups. Without `wpscan`, WordPress plugin/theme/core CVE enumeration falls back to manual `curl` probes (slower, narrower coverage). |
+| `nikto` | optional for pentest | exploit-correlator (web-server CGI / misconfig scan) | Long-running web server scanner that detects outdated software, dangerous files, misconfigurations. Install via `brew install nikto` (macOS), `apt install nikto` (Debian/Ubuntu), `dnf install nikto` (Fedora/RHEL). Pre-installed on Kali Linux. |
+| `nuclei` | optional for pentest | exploit-correlator (template-based web vuln scan) | Fast, template-based vulnerability scanner from ProjectDiscovery. Templates cover CVEs, misconfigurations, exposures. Install via `brew install nuclei` (macOS), `apt install nuclei` on newer Debian/Ubuntu, or `go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest`. Pre-installed on Kali Linux. Run `nuclei -update-templates` after install. |
 | SecLists (common credentials/wordlists) | optional for pentest | exploit-correlator (when exploits need credential lists) | Available at `https://github.com/danielmiessler/SecLists`. Clone to a fixed location and reference. Pre-installed at `/usr/share/seclists/` on Kali Linux. |
+
+### Web-application pentest tooling — when each is needed
+
+The three optional web-app tools above (`wpscan`, `nikto`, `nuclei`) cover overlapping but distinct surfaces. Don't install all three reflexively — pick based on the engagement scope:
+
+| Scope | Recommended | Why |
+| --- | --- | --- |
+| WordPress-heavy target (any e-commerce/marketing site is likely WP) | `wpscan` + `nuclei` | wpscan owns WP-specific plugin/theme/core CVE lookups; nuclei catches generic web issues |
+| Generic web property (Rails, Node, custom backend) | `nuclei` + `nikto` | nuclei for current CVE templates; nikto for legacy CGI/misconfig coverage |
+| Pure service-CVE engagement (no web app surface) | none of the three | msfconsole + searchsploit cover this surface |
 
 ### Recommended pentest environment
 
