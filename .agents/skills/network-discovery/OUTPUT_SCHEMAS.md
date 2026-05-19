@@ -239,50 +239,57 @@ Sidecars produced before this schema version may lack the five `*_at` phase time
 
 ### Pentest extensions (when `playbook="pentest"`)
 
-When the engagement is a pentest (not a network-assessment), the sidecar includes these additional required fields beyond the base EngagementRecord:
+When the engagement is a pentest (not a network-assessment), the sidecar includes these additional required fields beyond the base EngagementRecord. **Schema version 1.1+** (this is the current version — see "Pentest schema versioning" below for v1.0 differences):
 
 ```json
 {
   "playbook": "pentest",
-  "roe": {
-    "text": "<verbatim scope-of-work excerpt, ≥100 chars>",
-    "reference": "SOW-2026-04-Acme",
-    "parsed_scope": {
-      "in_scope_ranges": ["10.0.0.0/24", "192.168.50.0/24"],
-      "out_of_scope": ["10.0.0.1"],
-      "prohibited_techniques": ["DoS", "social_engineering", "password_spraying"],
-      "engagement_window": { "start": "2026-05-18T13:00:00Z", "end": "2026-05-20T17:00:00Z" }
-    },
-    "parsed_overrides": null
-  },
+  "playbook_version": "1.1",
+  "scope": ["10.0.0.0/24", "192.168.50.0/24"],
   "sessions": [
     {
       "session_id": "s1",
       "started_at": "2026-05-18T13:00:00Z",
       "finished_at": "2026-05-18T19:30:00Z",
-      "soc_notified_at": "2026-05-18T12:55:00Z",
       "evidence_record_ids": ["rec-...", "rec-..."]
     }
   ],
-  "soc_notified_at": "2026-05-18T12:55:00Z",
   "evidence_directory": "reports/pentest-evidence/<engagement_id>/",
   "narrative_path": "reports/<engagement_id>-narrative.md",
   "exploit_attempts_count": 12,
   "successful_exploits_count": 3,
-  "mitre_attack_techniques_used": ["T1190", "T1059", "T1078"],
-  "scope_creep_acknowledgments": [
-    { "attempt_record_id": "rec-...", "operator_reason": "pivot discovery; not exploited" }
-  ]
+  "mitre_attack_techniques_used": ["T1190", "T1059", "T1078"]
 }
 ```
 
-**Session shape.** Multi-day pentests use `sessions[]` to record each contiguous work block separately. Single-session engagements still emit a one-element `sessions[]` array for schema consistency. Each session has its own SOC notification timestamp (re-notify per session — SOC shifts change). Top-level `soc_notified_at` mirrors the first session's value for quick access.
+**Session shape.** Multi-day pentests use `sessions[]` to record each contiguous work block separately. Single-session engagements still emit a one-element `sessions[]` array for schema consistency.
 
 **Field rules.**
-- `roe.text` is required and must be ≥100 chars of meaningful content (per `pentest-engagement` spec Requirement 1)
-- `roe.parsed_overrides` is non-null when the operator manually corrected the auto-parse
-- `sessions[].soc_notified_at` follows the same `"skipped: <reason>"` convention as other phase timestamps
-- `scope_creep_acknowledgments[]` must have one entry per evidence record with `outcome="refused_out_of_scope"`
+- `playbook_version` is required (see versioning section below)
+- `scope` is required and non-empty; it is the operator-supplied list of CIDRs / IPs / hostnames that `exploit-correlator` re-validates targets against
+- `sessions[]` is required and has at least one entry
+
+### Pentest schema versioning
+
+The pentest sidecar schema has two versions in active use:
+
+| Version | Recorded as | Contains | Notes |
+| --- | --- | --- | --- |
+| 1.0 | `playbook_version="1.0"` | `roe.text`, `roe.reference`, `roe.parsed_scope.*`, `roe.parsed_overrides`, `soc_notified_at`, `sessions[].soc_notified_at`, `scope_creep_acknowledgments[]` (all REQUIRED) | The original spec. Strong authorization-capture guards. Run by checking out the archived `pentest-engagement` change directory. |
+| 1.1+ | `playbook_version="1.1"` | The fields above are ABSENT entirely (not null — not present as keys). `scope` field added as required. | Current spec. Authorization documentation is operator-maintained outside the tool. |
+
+Downstream consumers reading a pentest sidecar MUST check `playbook_version` and adapt:
+
+- v1.0 consumer reading a v1.0 sidecar: works as designed
+- v1.0 consumer reading a v1.1 sidecar: **will fail** looking for ROE/SOC fields that aren't there — must be updated
+- v1.1-aware consumer reading a v1.0 sidecar: works — the extra ROE/SOC fields are simply unknown extra keys
+- v1.1-aware consumer reading a v1.1 sidecar: works as designed
+
+### Backwards compatibility
+
+A v1.1-aware reader of a v1.0 sidecar simply ignores extra fields it doesn't recognize. A v1.0-aware reader of a v1.1 sidecar will fail to find expected fields — those readers must be updated to handle v1.1. The `playbook_version` field is the discriminator.
+
+Pre-existing v1.0 sidecars remain valid v1.0 records. They are NOT migrated to v1.1 (that would require recreating data that no longer exists in the new schema). Their ROE/SOC fields stay populated; consumers parsing them must respect v1.0 rules.
 
 ## `PentestEvidenceRecord`
 

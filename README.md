@@ -54,12 +54,12 @@ The `/pentest:*` namespace is separate from `/netd:*` because pentest activity i
 
 | Command | Purpose | Example |
 | --- | --- | --- |
-| `/pentest:engagement <scope> client=<name> roe-text-from-file=<path>` | Authorized pentest end-to-end: ROE confirmation, scope validation, exploit orchestration with per-attempt literal-`execute` confirmation, evidence capture, attack-narrative report | `/pentest:engagement 10.0.0.0/24 client="Acme Corp" roe-text-from-file=./roe-acme.txt` |
+| `/pentest:engagement scope=<csv> client=<name>` | Authorized pentest end-to-end (spec v1.1): scope confirmation, exploit orchestration with per-attempt literal-`execute` confirmation, evidence capture, attack-narrative report. Operator-maintained audit trail — see Safety summary below. | `/pentest:engagement scope=10.0.0.0/24 client="Self"` |
 
 **Safety summary** (every guard below is a hard spec requirement, not a guideline — see [openspec/specs/pentest-engagement/spec.md](openspec/specs/pentest-engagement/spec.md) and [openspec/specs/exploit-correlator/spec.md](openspec/specs/exploit-correlator/spec.md)):
 
-- The engagement REFUSES to start without verbatim ROE text (≥100 chars) — a SOW reference number alone is insufficient
-- The engagement REFUSES to start without a SOC notification timestamp (or an explicit `"skipped: <reason>"` for stealth pentests)
+- **As of spec v1.1, ROE text capture and SOC notification capture have been REMOVED.** The tool no longer enforces or records authorization context. Authorization documentation is now the operator's responsibility, maintained outside the tool. For engagements where the v1.0 enforcement matters (formal client SOW deliverables, regulated industries, multi-operator teams), run the v1.0 spec from [openspec/changes/archive/2026-05-18-pentest-engagement/](openspec/changes/archive/2026-05-18-pentest-engagement/) — see [playbooks/pentest.md](playbooks/pentest.md) appendix "When to roll back to v1.0 enforcement".
+- The engagement REFUSES to start without a non-empty `scope=` argument (the operator-supplied source of truth for in-scope re-validation)
 - Every exploit target is RE-validated against the parsed ROE in-scope list at attempt time (no caching)
 - Every exploit attempt requires the literal operator response `execute` — `yes`, `y`, `Execute`, etc. are all treated as decline; there is no auto-confirm flag
 - Defaults to dry-run for every attempt; execution requires explicit per-attempt confirmation
@@ -142,7 +142,7 @@ Reports may contain sensitive findings — `reports/` is not gitignored by defau
 
 Similarly, if you use the offline CVE lookup feature (`/netd:cve-snapshot` and `cve_source=offline`), the snapshot lives under `./cve-snapshots/` (typically ~2 GB after a full NVD ingest). Add `cve-snapshots/` to your `.gitignore` — snapshots are operator-managed data, large, and don't belong in version control.
 
-Pentest engagements produce evidence files (screenshots, command output captures) under `reports/pentest-evidence/<engagement_id>/`. These are append-only per-attempt records and typically contain client-sensitive data — captured credentials, exfiltrated data samples, screenshots of admin UIs. **Add `reports/pentest-evidence/` to your `.gitignore`.** Custody and retention of these files is per the ROE; default is destruction at engagement end.
+Pentest engagements produce evidence files (screenshots, command output captures) under `reports/pentest-evidence/<engagement_id>/`. These are append-only per-attempt records and typically contain client-sensitive data — captured credentials, exfiltrated data samples, screenshots of admin UIs. **Add `reports/pentest-evidence/` to your `.gitignore`.** Custody and retention of these files is per your engagement agreement; default is destruction at engagement end. (As of pentest-engagement v1.1, retention terms are operator-tracked outside the tool — the sidecar no longer captures ROE-derived retention rules.)
 
 ### Engagements & playbooks
 
@@ -153,9 +153,9 @@ Playbooks live in [playbooks/](playbooks/) as narrative markdown — readable to
 | Playbook | Top-level slash command | Description |
 |---|---|---|
 | [playbooks/network-assessment.md](playbooks/network-assessment.md) | `/netd:engagement <scope> client=<name>` | Discover all hosts on a client network, scan for vulnerabilities, produce a technical report and a client letter, with engagement metadata captured to a sidecar JSON. |
-| [playbooks/pentest.md](playbooks/pentest.md) | `/pentest:engagement <scope> client=<name> roe-text-from-file=<path>` | Authorized penetration test with exploit attempt orchestration. Verbatim ROE text required; per-attempt operator confirmation; append-only evidence directory; attack-narrative report. **Distinct from network-assessment** — pentest actually exploits findings. Higher operational and legal stakes. |
+| [playbooks/pentest.md](playbooks/pentest.md) | `/pentest:engagement scope=<csv> client=<name>` | Authorized penetration test with exploit attempt orchestration (spec v1.1). Per-attempt literal-`execute` operator confirmation, append-only evidence directory, attack-narrative report. **Distinct from network-assessment** — pentest actually exploits findings. Higher operational and legal stakes. As of v1.1, authorization documentation (ROE, SOC notification) is operator-maintained outside the tool — see playbook for "expanded operator responsibility." |
 
-The two engagement types are deliberately distinct. **Use `/netd:engagement` for reconnaissance and posture review** — identify what's vulnerable without exploiting it. **Use `/pentest:engagement` only when the contract calls for actual exploit attempts** — the higher-friction safety design (verbatim ROE text capture, per-attempt literal-`execute` confirmation, hard target-in-scope validation, append-only evidence records) exists because pentest engagements have meaningful legal and operational risk that the recon-only flow does not.
+The two engagement types are deliberately distinct. **Use `/netd:engagement` for reconnaissance and posture review** — identify what's vulnerable without exploiting it. **Use `/pentest:engagement` only when you have explicit authorization for actual exploit attempts** — the safety design (per-attempt literal-`execute` confirmation, hard target-in-scope validation against operator-supplied scope, append-only evidence records) exists because pentest engagements have meaningful legal and operational risk that the recon-only flow does not. The spec v1.0 (with mandatory ROE/SOC capture) remains available via the archived change directory for engagements where that enforcement is needed.
 
 Each engagement writes three files to [reports/](reports/):
 

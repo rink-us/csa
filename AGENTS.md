@@ -51,7 +51,6 @@ Where to look next (authoritative sources)
 - `playbooks/` — human-reviewed procedures and engagement expectations (authorization, sidecar contents)
 
 When to ask the user a question (examples)
-- Target ownership/authorization for any non-lab/public-host scan (confirm before proceeding).
 - Whether to enable privileged scans (`privileged=true`) or CVE lookup (`cve_lookup=true`) — both change risk/noise/time.
 
 Keep it short
