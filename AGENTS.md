@@ -2,7 +2,7 @@ Purpose
 - Quick, high-signal notes for an OpenCode/Claude session working in this repo. Every line is something an agent would likely miss without help.
 
 Where the real logic lives
-- Skills are not Python modules or a runtime — they are prompt-driven Claude Code files under `.agents/skills/` (each `SKILL.md` is authoritative).
+- Skills are not Python modules or a runtime — they are prompt-driven Skill definitions files under `.agents/skills/` (each `SKILL.md` is authoritative).
 - Slash-command wrappers live under `.agents/commands/netd/`. Edit those files (not a mirrored `.claude/` copy) to change command behaviour.
 - Shared schemas: `.agents/skills/network-discovery/OUTPUT_SCHEMAS.md` — use these when chaining skills.
 
@@ -30,7 +30,7 @@ Where outputs land
 Critical behavioural details an agent would miss
 - These SKILL.md files assume specific external CLIs. If a required binary is missing, skills emit a `missing_binary` error; do not try to emulate or implement fallback behaviour locally.
 - `service-enumerator` has `cve_lookup=false` by default (it's slow/noisy). CIRCL is the default CVE source (no key); NVD is rate-limited and requires API/key handling.
-- Privileged scans: `port-scanner.privileged=true` triggers `sudo nmap -sS` (SYN scan). Always confirm operator intent and sudo availability before suggesting privileged scans — higher detection footprint.
+- Privileged scans: `port-scanner.privileged=true` triggers `sudo nmap -sS` (SYN scan).
 - macOS shipped LibreSSL is not full-featured for TLS tasks. `tls-analyzer` prefers OpenSSL 1.1.1+ (install `openssl@3` via Homebrew) — otherwise CT/OCSP steps degrade gracefully but are limited.
 - For many-host scans (LAN / /24), prefer the `/netd:vuln-scan` pattern: ARP discovery → classify → one nmap process per host in parallel. Do NOT pass many hosts into a single nmap process (it serializes timeouts and is very slow for silent IoT devices).
 - `port_set` semantics (used by port-scanner and slash commands): `top-100` = nmap `-F`; `top-1024` = `-p 1-1024` (default); `iot-curated` = specific admin ports; `full` = `1-65535`. Use `port_range` to override precisely.
@@ -40,7 +40,7 @@ Critical behavioural details an agent would miss
 - `netd:audit` and `/netd:report` will confirm ownership/authorization before scanning internet hosts; always verify targets that look like public internet hosts. Use `scanme.nmap.org` for harmless testing only.
 
 Editing guidance
-- To change or add a slash command, edit the canonical file in `.agents/commands/netd/`. Those files drive what's exposed in Claude Code sessions.
+- To change or add a slash command, edit the canonical file in `.agents/commands/netd/`. Those files drive what's exposed in sessions.
 - To change behaviour of a skill, edit its `SKILL.md` under `.agents/skills/` (the skill text is the implementation/prompt). There is no hidden runtime to update.
 
 Where to look next (authoritative sources)

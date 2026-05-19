@@ -48,21 +48,11 @@ Arguments after the command name are positional. Unknown flags are surfaced as a
 
 ### Pentest commands
 
-The `/pentest:*` namespace is separate from `/netd:*` because pentest activity is operationally and legally distinct from reconnaissance. Files live in [.agents/commands/pentest/](.agents/commands/pentest/).
+The `/pentest:*` namespace is separate from `/netd:*` because pentest activity is operationally distinct from reconnaissance. Files live in [.agents/commands/pentest/](.agents/commands/pentest/).
 
 | Command | Purpose | Example |
 | --- | --- | --- |
 | `/pentest:engagement scope=<csv> client=<name>` | Authorized pentest end-to-end: scope confirmation, exploit orchestration with per-attempt literal-`execute` confirmation, evidence capture, attack-narrative report. Operator-maintained audit trail — see Safety summary below. | `/pentest:engagement scope=10.0.0.0/24 client="Self"` |
-
-**Safety summary** (every guard below is a hard requirement, not a guideline):
-
-- **The tool does not capture or enforce engagement-authorization text or notifications to the client's defenders.** Authorization documentation is the operator's responsibility, maintained outside the tool.
-- The engagement REFUSES to start without a non-empty `scope=` argument (the operator-supplied source of truth for in-scope re-validation)
-- Every exploit target is RE-validated against the operator-supplied in-scope list at attempt time (no caching)
-- Every exploit attempt requires the literal operator response `execute` — `yes`, `y`, `Execute`, etc. are all treated as decline; there is no auto-confirm flag
-- Defaults to dry-run for every attempt; execution requires explicit per-attempt confirmation
-- Evidence records are append-only — corrections happen via new records with `correction_of` reference, never by editing
-- Operator-supplied exploits (not from public databases) require a `disclosure_reference` field; there is no operator override
 
 Read [playbooks/pentest.md](playbooks/pentest.md) before your first pentest engagement.
 
@@ -78,7 +68,7 @@ Use the tls-analyzer skill on example.com:443.
 Use the network-mapper skill on 192.168.1.0/24 with discovery_method=arp.
 ```
 
-Naming the skill explicitly skips Claude's description-match step — it goes straight to reading the SKILL.md and following it. Useful when there's any ambiguity about which skill should fire.
+Naming the skill explicitly skips description-match step — it goes straight to reading the SKILL.md and following it. Useful when there's any ambiguity about which skill should fire.
 
 ### 3. Multi-skill chain in one prompt
 
@@ -151,15 +141,15 @@ Playbooks live in [playbooks/](playbooks/) as narrative markdown — readable to
 | Playbook | Top-level slash command | Description |
 |---|---|---|
 | [playbooks/network-assessment.md](playbooks/network-assessment.md) | `/netd:engagement <scope> client=<name>` | Discover all hosts on a client network, scan for vulnerabilities, produce a technical report and a client letter, with engagement metadata captured to a sidecar JSON. |
-| [playbooks/pentest.md](playbooks/pentest.md) | `/pentest:engagement scope=<csv> client=<name>` | Authorized penetration test with exploit attempt orchestration. Per-attempt literal-`execute` operator confirmation, append-only evidence directory, attack-narrative report. **Distinct from network-assessment** — pentest actually exploits findings. Higher operational and legal stakes. Authorization documentation and notifications to the client's defenders are operator-maintained outside the tool — see playbook for "expanded operator responsibility." |
+| [playbooks/pentest.md](playbooks/pentest.md) | `/pentest:engagement scope=<csv> client=<name>` | Penetration test with exploit attempt orchestration, append-only evidence directory, attack-narrative report. **Distinct from network-assessment** — pentest actually exploits findings. |
 
-The two engagement types are deliberately distinct. **Use `/netd:engagement` for reconnaissance and posture review** — identify what's vulnerable without exploiting it. **Use `/pentest:engagement` only when you have explicit authorization for actual exploit attempts** — the safety design (per-attempt literal-`execute` confirmation, hard target-in-scope validation against operator-supplied scope, append-only evidence records) exists because pentest engagements have meaningful legal and operational risk that the recon-only flow does not.
+The two engagement types are deliberately distinct. **Use `/netd:engagement` for reconnaissance and posture review** — identify what's vulnerable without exploiting it. **Use `/pentest:engagement` when you need actual exploit attempts**.
 
 Each engagement writes three files to [reports/](reports/):
 
 1. **Technical JSON report** — `report-<scope>-vuln-<timestamp>.json` — the structured findings
 2. **Client letter** — `report-<scope>-vuln-<timestamp>.txt` — plain-text email-ready summary
-3. **Engagement sidecar** — `engagement-<client-slug>-<date>.json` — client name, operator, authorization reference, links to the two above, `tools_used` from precheck, `operator_notes` (free text for manual additions after the fact)
+3. **Engagement sidecar** — `engagement-<client-slug>-<date>.json` — client name, operator, links to the two above, `tools_used` from precheck, `operator_notes` (free text for manual additions after the fact)
 
 The sidecar is the audit trail. Its schema is defined as `EngagementRecord` in [.agents/skills/network-discovery/OUTPUT_SCHEMAS.md](.agents/skills/network-discovery/OUTPUT_SCHEMAS.md#engagementrecord). Read alone (without the linked technical report), the sidecar answers: who ran the engagement, when, against what scope, under what authorization, which phases completed, what tools were used, where each produced file lives.
 
