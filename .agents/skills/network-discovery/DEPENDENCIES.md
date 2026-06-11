@@ -16,6 +16,22 @@ The network-discovery skills shell out to standard CLI tools. The agent SHOULD d
 | `python3` | 3.8 | cve-snapshot-manager (NVD JSON parsing + indexing) | no |
 | `gzip` | any (POSIX) | cve-snapshot-manager (decompressing NVD feeds) | no |
 
+## Extended-assessment CLIs
+
+The following CLIs are required by specific extended-assessment skills. Not needed for every engagement — install per skill need:
+
+| Tool | Min version | Used by | Notes |
+| --- | --- | --- | --- |
+| `gobuster` (or `ffuf`) | 3.0+ | web-path-finder | Directory/file brute-force. Install via `brew install gobuster` (macOS), `apt install gobuster` (Debian/Ubuntu), `dnf install gobuster` (Fedora/RHEL). Pre-installed on Kali Linux. ffuf: `brew install ffuf` or `apt install ffuf`. |
+| `hydra` (thc-hydra) | 9.0+ | password-attacker | Fast network logon cracker. `brew install hydra` (macOS), `apt install hydra` (Debian/Ubuntu), pre-installed on Kali Linux. |
+| `sqlmap` | 1.7+ | sql-injector | SQL injection automation. `brew install sqlmap` (macOS), `apt install sqlmap` (Debian/Ubuntu), `pip3 install sqlmap`, pre-installed on Kali Linux. |
+| `enum4linux-ng` | 1.0+ | windows-enumerator | SMB/RPC enumeration for Windows targets. `brew install enum4linux-ng` (macOS), `apt install enum4linux-ng` (Debian/Ubuntu), pre-installed on Kali Linux. Fallback: `impacket-smbclient` and `smbclient`. |
+| `smbclient` | 4.0+ | windows-enumerator | SMB client for share listing. Part of `samba` package. `brew install smbclient` (macOS), `apt install smbclient` (Debian/Ubuntu). |
+| `crackmapexec` (NetExec) | 6.0+ | windows-enumerator | Post-exploitation AD tool. `brew install crackmapexec` (macOS) or `pipx install crackmapexec`. Pre-installed on Kali Linux. |
+| `ldapsearch` | 2.4+ | windows-enumerator | LDAP directory query tool. Part of `openldap` package. Pre-installed on most distros. |
+| `subfinder` (optional) | 2.6+ | subdomain-enumerator | Fast passive subdomain enumeration. `brew install subfinder` (macOS), `apt install subfinder` (Debian/Ubuntu). Falls back to dig-only mode if unavailable. |
+| `amass` (optional) | 4.0+ | subdomain-enumerator | In-depth DNS enumeration and network mapping. `brew install amass` (macOS), `apt install amass` (Debian/Ubuntu). Falls back to dig-only mode if unavailable. |
+
 ## Optional CLIs
 
 | Tool | Used by | Notes |

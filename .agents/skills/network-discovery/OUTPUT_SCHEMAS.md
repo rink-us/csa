@@ -126,6 +126,130 @@ All timestamps are ISO 8601 UTC (`2026-05-17T12:34:56Z`).
 - `device_type` (string, free-form) — `linux_server`, `windows_workstation`, `network_device`, `iot`, `unknown`
 - `role` (`"host"` | `"gateway"` | `"router"` | `"unknown"`)
 
+## `SubdomainEntry`
+
+Produced by `subdomain-enumerator` — one per discovered subdomain.
+
+```json
+{
+  "subdomain": "www.example.com",
+  "label": "www",
+  "ips": ["93.184.216.34"],
+  "sources": ["crt.sh", "dns_bruteforce"],
+  "ttl": 300,
+  "fetched_at": "2026-06-10T12:00:00Z"
+}
+```
+
+- `subdomain` (string, required) — FQDN of the discovered subdomain
+- `label` (string, required) — first label of the FQDN (e.g. `www`, `api`, `mail`)
+- `ips` (array of strings, required) — resolved IPv4/IPv6 addresses
+- `sources` (array of strings, required) — which discovery methods found this entry (`crt.sh`, `dns_bruteforce`, `zone_transfer`, `record_types`)
+- `ttl` (int, nullable)
+- `fetched_at` (string, required) — ISO 8601 UTC
+
+## `PathEntry`
+
+Produced by `web-path-finder` — one per discovered web path.
+
+```json
+{
+  "path": "/wp-admin",
+  "status_code": 301,
+  "size_bytes": 232,
+  "content_type": "text/html; charset=utf-8",
+  "redirect_to": "https://example.com/wp-admin/",
+  "source": "probe",
+  "method": "GET"
+}
+```
+
+- `path` (string, required) — discovered URL path relative to base
+- `status_code` (int, required)
+- `size_bytes` (int, nullable)
+- `content_type` (string, nullable)
+- `redirect_to` (string, nullable) — redirect destination when status is 3xx
+- `source` (`"probe"` | `"brute_force"`)
+- `method` (`"GET"` | `"POST"`)
+
+## `CredentialTest`
+
+Produced by `password-attacker` — one per tested credential pair.
+
+```json
+{
+  "service": "ssh",
+  "port": 22,
+  "username": "root",
+  "password": "admin123",
+  "outcome": "success",
+  "source": "brute_force",
+  "target": "192.168.1.100",
+  "tested_at": "2026-06-10T12:00:00Z"
+}
+```
+
+- `service` (string, required)
+- `port` (int)
+- `username` (string, required)
+- `password` (string) — the tested password (when `outcome=success`); redacted to `"****"` in display output unless the result is a finding
+- `outcome` (`"success"` | `"failure"` | `"default_credential"`)
+- `source` (`"brute_force"` | `"spray"` | `"default_check"`)
+- `target` (string, required)
+- `tested_at` (string, required) — ISO 8601 UTC
+
+## `WindowsHostInfo`
+
+Produced by `windows-enumerator` — summarized per-check blocks.
+
+```json
+{
+  "type": "smb_shares",
+  "shares": [
+    { "name": "Documents", "type": "DISK", "access": "read_write", "remark": "Shared Documents" }
+  ],
+  "writable_shares": ["Documents"],
+  "null_session_access": false
+}
+```
+
+- `type` (string) — check name (`smb_shares`, `null_session`, `os_info`, `rid_bruteforce`, `users`, `ldap_anonymous`, `rpc_endpoints`, `kerberos`)
+- Check-specific fields documented in each check's invocation in `windows-enumerator/SKILL.md`
+
+## `SqlInjectionFinding`
+
+Produced by `sql-injector` — one per vulnerable parameter.
+
+```json
+{
+  "endpoint": {
+    "url": "https://example.com/page.php",
+    "method": "GET",
+    "parameter": "id",
+    "parameter_type": "numeric"
+  },
+  "vulnerable": true,
+  "techniques": ["boolean_blind", "error_based"],
+  "dbms": "MySQL",
+  "dbms_version": ">= 5.5",
+  "payload": "id=1 AND 1=1",
+  "severity": "critical",
+  "impact": "Complete database read access",
+  "remediation": "Use prepared statements / parameterized queries"
+}
+```
+
+- `endpoint.url` (string, required)
+- `endpoint.parameter` (string, required) — the injectable parameter name
+- `vulnerable` (bool, required)
+- `techniques` (array of strings) — successful techniques
+- `dbms` (string, nullable) — detected database type
+- `dbms_version` (string, nullable)
+- `payload` (string) — example working payload
+- `severity` (`"critical"` | `"high"` | `"medium"`)
+- `impact` (string) — plain-language impact description
+- `remediation` (string) — plain-language fix recommendation
+
 ## `TopologyEdge`
 
 ```json

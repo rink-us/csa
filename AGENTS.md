@@ -18,6 +18,11 @@ Entry points / exact commands
   - `/netd:vuln-scan <scope> [port-set] [scan-all] [no-letter]`
   - `/netd:engagement <scope> client=<name>` (full engagement workflow; writes sidecar)
   - `/netd:precheck` (verifies required CLIs installed)
+  - `/netd:subdomains <domain> [wordlist] [sources]` (subdomain enumeration via crt.sh, DNS brute-force, zone transfer, record types)
+  - `/netd:paths <url> [wordlist] [extensions]` (web path/directory brute-force via gobuster/ffuf)
+  - `/netd:crack <target> <service> [user] [pass]` (credential testing via hydra — auth confirmation required)
+  - `/netd:winenum <target> [user] [pass]` (Windows/AD enumeration — SMB, RPC, LDAP, Kerberos)
+  - `/netd:sqli <url> [param] [method] [techniques]` (SQL injection detection via sqlmap — auth confirmation required)
 
 Fallback / explicit invocation
 - If the slash command is ambiguous or unavailable, name the skill explicitly in plain language, e.g. `Use the port-scanner skill on scanme.nmap.org, ports 1-1024.` — this skips skill-selection and goes straight to the SKILL.md.
