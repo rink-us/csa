@@ -31,6 +31,7 @@ The following CLIs are required by specific extended-assessment skills. Not need
 | `ldapsearch` | 2.4+ | windows-enumerator | LDAP directory query tool. Part of `openldap` package. Pre-installed on most distros. |
 | `subfinder` (optional) | 2.6+ | subdomain-enumerator | Fast passive subdomain enumeration. `brew install subfinder` (macOS), `apt install subfinder` (Debian/Ubuntu). Falls back to dig-only mode if unavailable. |
 | `amass` (optional) | 4.0+ | subdomain-enumerator | In-depth DNS enumeration and network mapping. `brew install amass` (macOS), `apt install amass` (Debian/Ubuntu). Falls back to dig-only mode if unavailable. |
+| `searchsploit` (from `exploitdb`) | optional | exploitdb-searcher | Keyword-driven exploit search across ExploitDB. Falls back to CSV grep via curl when unavailable (slower, no local cache). |
 
 ## Optional CLIs
 
